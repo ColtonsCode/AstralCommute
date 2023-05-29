@@ -13,4 +13,8 @@ add_executable(${PROJECT_NAME} ${SRC_FILES})
 
 target_include_directories(${PROJECT_NAME} PRIVATE extlibs/SFML/include)
 
-target_link_libraries(${PROJECT_NAME} sfml-graphics sfml-system sfml-window)
+target_link_libraries(${PROJECT_NAME}
+	sfml-graphics
+	sfml-system
+	sfml-window
+)
