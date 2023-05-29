@@ -44,6 +44,12 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 
+# Visual Studio
+.vs/
+
 # Build folder
 build/
+out/
+
+[Oo][Uu][Tt]/
 [Bb][Uu][Ii][Ll][Dd]/
