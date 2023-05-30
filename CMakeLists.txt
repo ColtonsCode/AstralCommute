@@ -5,6 +5,10 @@ project(AstralCommuteClient)
 set(BUILD_SHARED_LIBS False)
 add_subdirectory(extlibs/SFML)
 
+if(LINUX)
+	include_directories(/usr/include/freetype2)
+endif()
+
 add_executable(${PROJECT_NAME} 
 	src/client/Main.cpp
 )
