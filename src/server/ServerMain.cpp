@@ -1,7 +1,12 @@
 #include <iostream>
 
+#include "Server.h"
+
 int main()
 {
-	std::cout << "Hello, Server!\n";
-	return 0;
+    Server server(4777);
+	while(true)
+	{
+		server.Update();
+	}
 }
