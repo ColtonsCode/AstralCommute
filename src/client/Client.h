@@ -14,5 +14,5 @@ private:
 	sf::IpAddress m_ipAddress;
 
 	void Send(const std::string& message);
-	void Receive(char* buffer);
+	void Receive();
 };

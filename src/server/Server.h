@@ -1,5 +1,6 @@
 #pragma once
 #include <SFML/Network.hpp>
+#include <vector>
 
 class Server
 {
@@ -12,4 +13,9 @@ private:
 	sf::TcpSocket m_socket;
 	sf::TcpListener m_listener;
 	sf::IpAddress m_ipAddress;
+
+	// Multi client stuff
+	std::vector<std::shared_ptr<sf::TcpSocket>> clients;
+	sf::SocketSelector selector;
+	
 };

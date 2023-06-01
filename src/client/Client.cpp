@@ -11,10 +11,10 @@ Client::Client(std::string userName, const unsigned short port) :
 	if (m_socket.connect(m_ipAddress, port) == sf::TcpSocket::Status::Error)
 	{
 		std::cout << "Connection error" << std::endl;
-	}else
+	} else
 	{
 		const std::string confirmationMessage{ m_name + " has connected on port: " + std::to_string(m_socket.getLocalPort())};
-		m_socket.send(confirmationMessage.c_str(), confirmationMessage.length() + 1);
+		Send(confirmationMessage);
 	}
 	std::cout << "Connected, you can now send messages!\n";
 }
@@ -31,18 +31,21 @@ void Client::Update()
 
 void Client::Send(const std::string& message)
 {
-	if(m_socket.send(message.c_str(), message.length() + 1) == sf::TcpSocket::Status::Error)
+	sf::Packet packet;
+	packet << message;
+	if(m_socket.send(packet) == sf::TcpSocket::Status::Error)
 	{
 		std::cout << "Error occured when sending the message." << std::endl;
 	}
 }
 
-void Client::Receive(char* buffer)
+void Client::Receive()
 {
-	size_t received{};
-	m_socket.receive(buffer, sizeof(buffer), received);
-	if(received > 0)
-	{
-		std::cout << buffer << std::endl;
-	}
+	sf::Packet packet;
+	std::string message;
+
+	m_socket.receive(packet);
+	packet >> message;
+
+	std::cout << message << std::endl;
 }
