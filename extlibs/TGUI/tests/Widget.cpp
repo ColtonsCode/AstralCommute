@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -22,13 +22,9 @@
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "Tests.hpp"
-#include <TGUI/Widgets/Panel.hpp>
-#include <TGUI/Widgets/Button.hpp>
-#include <TGUI/Widgets/Label.hpp>
-#include <TGUI/Widgets/CheckBox.hpp>
-#include <TGUI/Widgets/EditBox.hpp>
 #include <iostream>
+
+#include "Tests.hpp"
 
 TEST_CASE("[Widget]")
 {
@@ -81,7 +77,7 @@ TEST_CASE("[Widget]")
         panel1->add(widget);
 
         // When the same widget is added to a different parent, a warning is generated but the widget gets moved
-        std::streambuf *oldbuf = std::cerr.rdbuf(0);
+        std::streambuf *oldbuf = std::cerr.rdbuf(nullptr);
         panel2->add(widget);
         std::cerr.rdbuf(oldbuf);
         REQUIRE(widget->getParent() == panel2.get());
@@ -309,6 +305,41 @@ TEST_CASE("[Widget]")
         REQUIRE(widget->getRotationOrigin() == tgui::Vector2f(0.8f, 0.7f));
     }
 
+    SECTION("TextSize")
+    {
+        widget->setTextSize(15);
+        REQUIRE(widget->getTextSize() == 15);
+
+        // Renderer overwrites widget property
+        widget->getRenderer()->setTextSize(20);
+        REQUIRE(widget->getTextSize() == 20);
+
+        widget->setTextSize(25);
+        REQUIRE(widget->getTextSize() == 20);
+        widget->getRenderer()->setTextSize(0);
+        REQUIRE(widget->getTextSize() == 25);
+    }
+
+    SECTION("UserData")
+    {
+        REQUIRE(!widget->hasUserData());
+        REQUIRE_THROWS_AS(widget->getUserData<int>(), std::bad_cast);
+
+        widget->setUserData(5);
+        REQUIRE(widget->hasUserData());
+        REQUIRE(widget->getUserData<int>() == 5);
+        REQUIRE_THROWS_AS(widget->getUserData<std::string>(), std::bad_cast);
+
+        widget->setUserData(std::string("Hello"));
+        REQUIRE(widget->hasUserData());
+        REQUIRE(widget->getUserData<std::string>() == "Hello");
+        REQUIRE_THROWS_AS(widget->getUserData<int>(), std::bad_cast);
+
+        widget->setUserData({});
+        REQUIRE(!widget->hasUserData());
+        REQUIRE_THROWS_AS(widget->getUserData<std::string>(), std::bad_cast);
+    }
+
     SECTION("WidgetName")
     {
         auto w1 = tgui::ClickableWidget::create();
@@ -394,6 +425,18 @@ TEST_CASE("[Widget]")
             GuiNull gui;
             gui.add(widget);
             REQUIRE(renderer->getFont() == nullptr);
+        }
+
+        SECTION("TextSize")
+        {
+            REQUIRE(renderer->getTextSize() == 0);
+
+            renderer->setTextSize(20);
+            REQUIRE(renderer->getTextSize() == 20);
+
+            auto pairs = renderer->getPropertyValuePairs();
+            REQUIRE(static_cast<unsigned int>(pairs["TextSize"].getNumber()) == renderer->getTextSize());
+            REQUIRE(static_cast<unsigned int>(renderer->getProperty("TextSize").getNumber()) == renderer->getTextSize());
         }
 
         SECTION("Non-existent property")

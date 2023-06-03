@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -28,13 +28,13 @@
 
 #include <TGUI/Vector2.hpp>
 
-#if TGUI_HAS_BACKEND_SFML
+#if TGUI_HAS_RENDERER_BACKEND_SFML_GRAPHICS && !TGUI_DISABLE_SFML_CONVERSIONS
     #include <SFML/Graphics/Rect.hpp>
 #endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
     template <typename T>
     class Rect
@@ -46,7 +46,7 @@ namespace tgui
         ///
         /// Creates an empty rectangle (it is equivalent to calling Rect{0, 0, 0, 0}).
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        TGUI_CONSTEXPR Rect() = default;
+        constexpr Rect() = default;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -55,7 +55,7 @@ namespace tgui
         /// @param rect  Rectangle to copy
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         template <typename U>
-        explicit TGUI_CONSTEXPR Rect(const Rect<U>& rect) :
+        explicit constexpr Rect(const Rect<U>& rect) :
             left  {static_cast<T>(rect.left)},
             top   {static_cast<T>(rect.top)},
             width {static_cast<T>(rect.width)},
@@ -63,13 +63,13 @@ namespace tgui
         {
         }
 
-#if TGUI_HAS_BACKEND_SFML
+#if TGUI_HAS_RENDERER_BACKEND_SFML_GRAPHICS && !TGUI_DISABLE_SFML_CONVERSIONS
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @brief Constructs the rectangle from an sf::Rect
         ///
         /// @param rect  Rectangle to initialize
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        explicit TGUI_CONSTEXPR Rect(sf::Rect<T> rect) :
+        explicit constexpr Rect(sf::Rect<T> rect) :
             left  {rect.left},
             top   {rect.top},
             width {rect.width},
@@ -86,7 +86,7 @@ namespace tgui
         /// @param rectWidth  Width of the rectangle
         /// @param rectHeight Height of the rectangle
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        TGUI_CONSTEXPR Rect(T rectLeft, T rectTop, T rectWidth, T rectHeight) :
+        constexpr Rect(T rectLeft, T rectTop, T rectWidth, T rectHeight) :
             left  {rectLeft},
             top   {rectTop},
             width {rectWidth},
@@ -101,7 +101,7 @@ namespace tgui
         /// @param position Position of the top-left corner of the rectangle
         /// @param size     Size of the rectangle
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        TGUI_CONSTEXPR Rect(Vector2<T> position, Vector2<T> size) :
+        constexpr Rect(Vector2<T> position, Vector2<T> size) :
             left  {position.x},
             top   {position.y},
             width {size.x},
@@ -115,7 +115,7 @@ namespace tgui
         ///
         /// @param position  New position for the rectangle
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        TGUI_CONSTEXPR void setPosition(Vector2<T> position)
+        constexpr void setPosition(Vector2<T> position)
         {
             left = position.x;
             top = position.y;
@@ -127,7 +127,7 @@ namespace tgui
         ///
         /// @return Rectangle position
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        TGUI_CONSTEXPR Vector2<T> getPosition() const
+        TGUI_NODISCARD constexpr Vector2<T> getPosition() const
         {
             return {left, top};
         }
@@ -138,7 +138,7 @@ namespace tgui
         ///
         /// @param size  New size for the rectangle
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        TGUI_CONSTEXPR void setSize(Vector2<T> size)
+        constexpr void setSize(Vector2<T> size)
         {
             width = size.x;
             height = size.y;
@@ -150,12 +150,12 @@ namespace tgui
         ///
         /// @return Rectangle size
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        TGUI_CONSTEXPR Vector2<T> getSize() const
+        TGUI_NODISCARD constexpr Vector2<T> getSize() const
         {
             return {width, height};
         }
 
-#if TGUI_HAS_BACKEND_SFML
+#if TGUI_HAS_RENDERER_BACKEND_SFML_GRAPHICS && !TGUI_DISABLE_SFML_CONVERSIONS
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @brief Converts the Rect to an sf::Rect
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -176,7 +176,7 @@ namespace tgui
         ///
         /// @warning This code assumes the width and height are positive.
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        TGUI_CONSTEXPR bool contains(const Vector2<T>& pos) const
+        TGUI_NODISCARD constexpr bool contains(const Vector2<T>& pos) const
         {
             return (pos.x >= left) && (pos.x < left + width) && (pos.y >= top) && (pos.y < top + height);
         }
@@ -191,7 +191,7 @@ namespace tgui
         ///
         /// @warning This code assumes the width and height of both rectangles are positive.
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        TGUI_CONSTEXPR bool intersects(const Rect<T>& rect) const
+        TGUI_NODISCARD constexpr bool intersects(const Rect<T>& rect) const
         {
             // Compute the intersection boundaries
             const T interLeft   = std::max(left, rect.left);
@@ -218,7 +218,7 @@ namespace tgui
     /// @brief Checks if two Rect objects are equal
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     template <typename T>
-    TGUI_CONSTEXPR bool operator==(const Rect<T>& left, const Rect<T>& right)
+    TGUI_NODISCARD constexpr bool operator==(const Rect<T>& left, const Rect<T>& right)
     {
         return (left.left == right.left) && (left.width == right.width)
             && (left.top == right.top) && (left.height == right.height);
@@ -229,7 +229,7 @@ namespace tgui
     /// @brief Checks if two Rect objects are different
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     template <typename T>
-    TGUI_CONSTEXPR bool operator!=(const Rect<T>& left, const Rect<T>& right)
+    TGUI_NODISCARD constexpr bool operator!=(const Rect<T>& left, const Rect<T>& right)
     {
         return !(left == right);
     }

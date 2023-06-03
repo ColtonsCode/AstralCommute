@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,12 +27,17 @@
 
 #if defined(TGUI_SYSTEM_WINDOWS)
 
-#include <TGUI/WindowsInclude.hpp>
+#include <TGUI/extlibs/IncludeWindows.hpp>
 
 #if defined(__has_include)
     #if __has_include (<shellapi.h>)
         #define TGUI_SHELL_API_HEADER_INCLUDED
         #include <shellapi.h>
+
+        // MinGW.org based TDM-GCC doesn't define SHGFI_ADDOVERLAYS
+        #ifndef SHGFI_ADDOVERLAYS
+            #define SHGFI_ADDOVERLAYS   0x000000020
+        #endif
     #endif
 #endif
 
@@ -73,14 +78,14 @@ namespace tgui
     {
     public:
         FileDialogIconLoaderWindows();
-        ~FileDialogIconLoaderWindows();
+        ~FileDialogIconLoaderWindows() override;
 
-        bool update() override;
-        bool supportsSystemIcons() const override;
-        bool hasGenericIcons() const override;
-        Texture getGenericFileIcon(const Filesystem::FileInfo& file) override;
+        TGUI_NODISCARD bool update() override;
+        TGUI_NODISCARD bool supportsSystemIcons() const override;
+        TGUI_NODISCARD bool hasGenericIcons() const override;
+        TGUI_NODISCARD Texture getGenericFileIcon(const Filesystem::FileInfo& file) override;
         void requestFileIcons(const std::vector<Filesystem::FileInfo>&) override;
-        std::vector<Texture> retrieveFileIcons() override;
+        TGUI_NODISCARD std::vector<Texture> retrieveFileIcons() override;
 
     private:
         struct IconData
@@ -99,8 +104,8 @@ namespace tgui
             HANDLE finishedEvent = nullptr;
         };
 
-        static IconData loadIconPixels(decltype(&SHGetFileInfoW) dllGetFileInfoFuncHandle, const String& filename, bool isDirectory);
-        static Texture loadIcon(decltype(&SHGetFileInfoW) dllGetFileInfoFuncHandle, const String& filename, bool isDirectory);
+        TGUI_NODISCARD static IconData loadIconPixels(decltype(&SHGetFileInfoW) dllGetFileInfoFuncHandle, const String& filename, bool isDirectory);
+        TGUI_NODISCARD static Texture loadIcon(decltype(&SHGetFileInfoW) dllGetFileInfoFuncHandle, const String& filename, bool isDirectory);
         static DWORD WINAPI loadIconsThread(void* parameter);
 
     private:
@@ -321,7 +326,7 @@ namespace tgui
         const DWORD iconWidth = static_cast<DWORD>(bitmap.bmWidth);
         const DWORD iconHeight = static_cast<DWORD>(bitmap.bmHeight);
 
-        hDC = CreateCompatibleDC(NULL);
+        hDC = CreateCompatibleDC(nullptr);
         if (!hDC)
         {
             releaseResources();
@@ -343,7 +348,7 @@ namespace tgui
             infoheader.bmiHeader.biSizeImage = bitmapSize;
 
             // Allocate memory for the icon BGRA bitmap
-            auto buffer = std::make_unique<std::uint8_t[]>(2 * static_cast<std::size_t>(bitmapSize));
+            auto buffer = MakeUniqueForOverwrite<std::uint8_t[]>(2 * static_cast<std::size_t>(bitmapSize));
             std::uint8_t* pixelsBGRA = &buffer[0];
 
             if (!GetDIBits(hDC, iconInfo.hbmColor, 0, iconHeight, static_cast<void*>(pixelsBGRA), &infoheader, DIB_RGB_COLORS))
@@ -352,7 +357,7 @@ namespace tgui
                 return iconData;
             }
 
-            iconData.pixels = std::make_unique<std::uint8_t[]>(static_cast<std::size_t>(iconWidth) * iconHeight * 4);
+            iconData.pixels = MakeUniqueForOverwrite<std::uint8_t[]>(static_cast<std::size_t>(iconWidth) * iconHeight * 4);
             iconData.width = iconWidth;
             iconData.height = iconHeight;
 
@@ -381,7 +386,7 @@ namespace tgui
             infoheader.bmiHeader.biSizeImage = bitmapSize;
 
             // Allocate memory for 2 bitmaps: the icon BGR bitmap and the icon mask bitmap
-            auto buffer = std::make_unique<std::uint8_t[]>(2 * static_cast<std::size_t>(bitmapSize));
+            auto buffer = MakeUniqueForOverwrite<std::uint8_t[]>(2 * static_cast<std::size_t>(bitmapSize));
             std::uint8_t* pixelsBGR = &buffer[0];
             std::uint8_t* pixelsAlpha = &buffer[bitmapSize];
 
@@ -397,7 +402,7 @@ namespace tgui
                 return iconData;
             }
 
-            iconData.pixels = std::make_unique<std::uint8_t[]>(static_cast<std::size_t>(iconWidth) * iconHeight * 4);
+            iconData.pixels = MakeUniqueForOverwrite<std::uint8_t[]>(static_cast<std::size_t>(iconWidth) * iconHeight * 4);
             iconData.width = iconWidth;
             iconData.height = iconHeight;
 

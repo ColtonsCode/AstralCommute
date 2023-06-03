@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -29,6 +29,10 @@
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char Group::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     Group::Group(const char* typeName, bool initRenderer) :
@@ -52,7 +56,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Group::Ptr Group::copy(Group::ConstPtr group)
+    Group::Ptr Group::copy(const Group::ConstPtr& group)
     {
         if (group)
             return std::static_pointer_cast<Group>(group->clone());
@@ -79,13 +83,6 @@ namespace tgui
     GroupRenderer* Group::getRenderer()
     {
         return aurora::downcast<GroupRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    const GroupRenderer* Group::getRenderer() const
-    {
-        return aurora::downcast<const GroupRenderer*>(Widget::getRenderer());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -138,7 +135,7 @@ namespace tgui
 
     void Group::rendererChanged(const String& property)
     {
-        if (property == "Padding")
+        if (property == U"Padding")
         {
             m_paddingCached = getSharedRenderer()->getPadding();
             setSize(m_size);
@@ -149,7 +146,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Group::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void Group::draw(BackendRenderTarget& target, RenderStates states) const
     {
         states.transform.translate({m_paddingCached.getLeft(), m_paddingCached.getTop()});
 
@@ -161,6 +158,13 @@ namespace tgui
         Container::draw(target, states);
 
         target.removeClippingLayer();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr Group::clone() const
+    {
+        return std::make_shared<Group>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

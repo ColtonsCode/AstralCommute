@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,7 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Widgets/SeparatorLine.hpp>
 
 TEST_CASE("[SeparatorLine]")
 {
@@ -78,8 +77,7 @@ TEST_CASE("[SeparatorLine]")
     SECTION("Saving and loading from file")
     {
         separator->setSize({2, 100});
-        separator->getRenderer()->setColor(tgui::Color::Red);
 
-        testSavingWidget("SeparatorLine", separator, false);
+        testSavingWidget("SeparatorLine", separator);
     }
 }

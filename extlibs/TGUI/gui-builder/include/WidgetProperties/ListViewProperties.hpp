@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,7 +27,6 @@
 #define TGUI_GUI_BUILDER_LIST_VIEW_PROPERTIES_HPP
 
 #include "WidgetProperties.hpp"
-#include <TGUI/Widgets/ListView.hpp>
 
 struct ListViewProperties : WidgetProperties
 {
@@ -37,7 +36,7 @@ struct ListViewProperties : WidgetProperties
     // TODO: Item icons
     // TODO: Scrollbar renderer
 
-    void updateProperty(tgui::Widget::Ptr widget, const tgui::String& property, const tgui::String& value) const override
+    void updateProperty(const tgui::Widget::Ptr& widget, const tgui::String& property, const tgui::String& value) const override
     {
         auto listView = widget->cast<tgui::ListView>();
         if (property == "Columns")
@@ -79,15 +78,17 @@ struct ListViewProperties : WidgetProperties
             listView->setShowHorizontalGridLines(parseBoolean(value, false));
         else if (property == "ExpandLastColumn")
             listView->setExpandLastColumn(parseBoolean(value, false));
+        else if (property == "ResizableColumns")
+            listView->setResizableColumns(parseBoolean(value, false));
         else
             WidgetProperties::updateProperty(widget, property, value);
     }
 
-    PropertyValueMapPair initProperties(tgui::Widget::Ptr widget) const override
+    TGUI_NODISCARD PropertyValueMapPair initProperties(const tgui::Widget::Ptr& widget) const override
     {
         auto pair = WidgetProperties::initProperties(widget);
         auto listView = widget->cast<tgui::ListView>();
-        pair.first["Columns"] = {"List<String>", serializeColumns(listView)}; // TODO: Should have its own type
+        pair.first["Columns"] = {"ListViewColumns", serializeColumns(listView)};
         pair.first["HeaderHeight"] = {"Float", tgui::String::fromNumber(listView->getHeaderHeight())};
         pair.first["HeaderVisible"] = {"Bool", tgui::Serializer::serialize(listView->getHeaderVisible())};
         pair.first["MultiSelect"] = {"Bool", tgui::Serializer::serialize(listView->getMultiSelect())};
@@ -101,6 +102,7 @@ struct ListViewProperties : WidgetProperties
         pair.first["ShowVerticalGridLines"] = {"Bool", tgui::Serializer::serialize(listView->getShowVerticalGridLines())};
         pair.first["ShowHorizontalGridLines"] = {"Bool", tgui::Serializer::serialize(listView->getShowHorizontalGridLines())};
         pair.first["ExpandLastColumn"] = {"Bool", tgui::Serializer::serialize(listView->getExpandLastColumn())};
+        pair.first["ResizableColumns"] = {"Bool", tgui::Serializer::serialize(listView->getResizableColumns())};
 
         const auto renderer = listView->getSharedRenderer();
         pair.second["Borders"] = {"Outline", renderer->getBorders().toString()};
@@ -119,12 +121,25 @@ struct ListViewProperties : WidgetProperties
         pair.second["SeparatorColor"] = {"Color", tgui::Serializer::serialize(renderer->getSeparatorColor())};
         pair.second["GridLinesColor"] = {"Color", tgui::Serializer::serialize(renderer->getGridLinesColor())};
         pair.second["ScrollbarWidth"] = {"Float", tgui::String::fromNumber(renderer->getScrollbarWidth())};
+        pair.second["TextureHeaderBackground"] = {"Texture", tgui::Serializer::serialize(renderer->getTextureHeaderBackground())};
+        pair.second["TextureBackground"] = {"Texture", tgui::Serializer::serialize(renderer->getTextureBackground())};
         return pair;
     }
 
-private:
+    TGUI_NODISCARD static tgui::String serializeColumnAlignment(tgui::ListView::ColumnAlignment alignment)
+    {
+        switch (alignment)
+        {
+            case tgui::ListView::ColumnAlignment::Center:
+                return "Center";
+            case tgui::ListView::ColumnAlignment::Right:
+                return "Right";
+            default: // tgui::ListView::ColumnAlignment::Left
+                return "Left";
+        }
+    }
 
-    static tgui::String serializeColumns(tgui::ListView::Ptr listView)
+    TGUI_NODISCARD static tgui::String serializeColumns(const tgui::ListView::Ptr& listView)
     {
         std::vector<tgui::String> serializedColumns;
         for (std::size_t i = 0; i < listView->getColumnCount(); ++i)
@@ -132,22 +147,13 @@ private:
             const tgui::String caption = listView->getColumnText(i);
             const float width = listView->getColumnWidth(i);
             const tgui::ListView::ColumnAlignment alignment = listView->getColumnAlignment(i);
-
-            tgui::String serializedAlignment;
-            switch (alignment)
-            {
-                case tgui::ListView::ColumnAlignment::Left:    serializedAlignment = "Left";   break;
-                case tgui::ListView::ColumnAlignment::Center:  serializedAlignment = "Center"; break;
-                case tgui::ListView::ColumnAlignment::Right:   serializedAlignment = "Right";  break;
-            }
-
-            serializedColumns.emplace_back('(' + tgui::Serializer::serialize(caption) + ',' + tgui::Serializer::serialize(width) + ',' + serializedAlignment + ')');
+            serializedColumns.emplace_back('(' + tgui::Serializer::serialize(caption) + ',' + tgui::Serializer::serialize(width) + ',' + serializeColumnAlignment(alignment) + ')');
         }
 
         return serializeList(serializedColumns);
     }
 
-    static bool deserializeColumn(tgui::String serializedColumn, tgui::String& text, float& width, tgui::ListView::ColumnAlignment& alignment)
+    TGUI_NODISCARD static bool deserializeColumn(tgui::String serializedColumn, tgui::String& text, float& width, tgui::ListView::ColumnAlignment& alignment)
     {
         if ((serializedColumn.length() < 2) || (serializedColumn.front() != '(') || (serializedColumn.back() != ')'))
         {

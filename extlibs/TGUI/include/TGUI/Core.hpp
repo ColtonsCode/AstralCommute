@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -34,7 +34,8 @@
 #include <TGUI/ToolTip.hpp>
 #include <TGUI/Container.hpp>
 #include <TGUI/SubwidgetContainer.hpp>
-#include <TGUI/GuiBase.hpp>
+#include <TGUI/Backend/Window/Backend.hpp>
+#include <TGUI/Backend/Window/BackendGui.hpp>
 
 #include <TGUI/Loading/Theme.hpp>
 #include <TGUI/Loading/WidgetFactory.hpp>

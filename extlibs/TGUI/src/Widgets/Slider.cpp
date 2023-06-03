@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -24,19 +24,24 @@
 
 
 #include <TGUI/Widgets/Slider.hpp>
-#include <cmath>
+
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cmath>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char Slider::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     Slider::Slider(const char* typeName, bool initRenderer) :
         Widget{typeName, false}
     {
-        m_draggableWidget = true;
-
         if (initRenderer)
         {
             m_renderer = aurora::makeCopied<SliderRenderer>();
@@ -60,7 +65,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Slider::Ptr Slider::copy(Slider::ConstPtr slider)
+    Slider::Ptr Slider::copy(const Slider::ConstPtr& slider)
     {
         if (slider)
             return std::static_pointer_cast<Slider>(slider->clone());
@@ -87,13 +92,6 @@ namespace tgui
     SliderRenderer* Slider::getRenderer()
     {
         return aurora::downcast<SliderRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    const SliderRenderer* Slider::getRenderer() const
-    {
-        return aurora::downcast<const SliderRenderer*>(Widget::getRenderer());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -387,7 +385,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Slider::leftMousePressed(Vector2f pos)
+    bool Slider::leftMousePressed(Vector2f pos)
     {
         Widget::leftMousePressed(pos);
 
@@ -403,6 +401,7 @@ namespace tgui
 
         // Refresh the value
         mouseMoved(pos);
+        return true;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -437,11 +436,9 @@ namespace tgui
                 m_mouseDownOnThumbPos.y = m_thumb.height / 2.0f;
             }
 
-            float value;
-            if (m_thumbWithinTrackCached)
-                value = m_maximum - (((pos.y - m_mouseDownOnThumbPos.y) / (getSize().y - m_thumb.height)) * (m_maximum - m_minimum));
-            else
-                value = m_maximum - (((pos.y + (m_thumb.height / 2.0f) - m_mouseDownOnThumbPos.y) / getSize().y) * (m_maximum - m_minimum));
+            float value = m_thumbWithinTrackCached
+                ? m_maximum - (((pos.y - m_mouseDownOnThumbPos.y) / (getSize().y - m_thumb.height)) * (m_maximum - m_minimum))
+                : m_maximum - (((pos.y + (m_thumb.height / 2.0f) - m_mouseDownOnThumbPos.y) / getSize().y) * (m_maximum - m_minimum));
 
             if (m_invertedDirection)
                 value = m_maximum - (value - m_minimum);
@@ -466,11 +463,9 @@ namespace tgui
                 m_mouseDownOnThumbPos.y = pos.y - m_thumb.top;
             }
 
-            float value;
-            if (m_thumbWithinTrackCached)
-                value = (((pos.x - m_mouseDownOnThumbPos.x) / (getSize().x - m_thumb.width)) * (m_maximum - m_minimum)) + m_minimum;
-            else
-                value = (((pos.x + (m_thumb.width / 2.0f) - m_mouseDownOnThumbPos.x) / getSize().x) * (m_maximum - m_minimum)) + m_minimum;
+            float value = m_thumbWithinTrackCached
+                ? (((pos.x - m_mouseDownOnThumbPos.x) / (getSize().x - m_thumb.width)) * (m_maximum - m_minimum)) + m_minimum
+                : (((pos.x + (m_thumb.width / 2.0f) - m_mouseDownOnThumbPos.x) / getSize().x) * (m_maximum - m_minimum)) + m_minimum;
 
             if (m_invertedDirection)
                 value = m_maximum - (value - m_minimum);
@@ -489,8 +484,12 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    bool Slider::mouseWheelScrolled(float delta, Vector2f)
+    bool Slider::scrolled(float delta, Vector2f, bool touch)
     {
+        // Don't react to two finger scrolling
+        if (touch)
+            return false;
+
         // Don't do anything when changing value on scroll is disabled
         if (!m_changeValueOnScroll)
             return false;
@@ -541,12 +540,12 @@ namespace tgui
 
     void Slider::rendererChanged(const String& property)
     {
-        if (property == "Borders")
+        if (property == U"Borders")
         {
             m_bordersCached = getSharedRenderer()->getBorders();
             setSize(m_size);
         }
-        else if (property == "TextureTrack")
+        else if (property == U"TextureTrack")
         {
             m_spriteTrack.setTexture(getSharedRenderer()->getTextureTrack());
 
@@ -557,49 +556,49 @@ namespace tgui
 
             setSize(m_size);
         }
-        else if (property == "TextureTrackHover")
+        else if (property == U"TextureTrackHover")
         {
             m_spriteTrackHover.setTexture(getSharedRenderer()->getTextureTrackHover());
         }
-        else if (property == "TextureThumb")
+        else if (property == U"TextureThumb")
         {
             m_spriteThumb.setTexture(getSharedRenderer()->getTextureThumb());
             setSize(m_size);
         }
-        else if (property == "TextureThumbHover")
+        else if (property == U"TextureThumbHover")
         {
             m_spriteThumbHover.setTexture(getSharedRenderer()->getTextureThumbHover());
         }
-        else if (property == "TrackColor")
+        else if (property == U"TrackColor")
         {
             m_trackColorCached = getSharedRenderer()->getTrackColor();
         }
-        else if (property == "TrackColorHover")
+        else if (property == U"TrackColorHover")
         {
             m_trackColorHoverCached = getSharedRenderer()->getTrackColorHover();
         }
-        else if (property == "ThumbColor")
+        else if (property == U"ThumbColor")
         {
             m_thumbColorCached = getSharedRenderer()->getThumbColor();
         }
-        else if (property == "ThumbColorHover")
+        else if (property == U"ThumbColorHover")
         {
             m_thumbColorHoverCached = getSharedRenderer()->getThumbColorHover();
         }
-        else if (property == "BorderColor")
+        else if (property == U"BorderColor")
         {
             m_borderColorCached = getSharedRenderer()->getBorderColor();
         }
-        else if (property == "BorderColorHover")
+        else if (property == U"BorderColorHover")
         {
             m_borderColorHoverCached = getSharedRenderer()->getBorderColorHover();
         }
-        else if (property == "ThumbWithinTrack")
+        else if (property == U"ThumbWithinTrack")
         {
             m_thumbWithinTrackCached = getSharedRenderer()->getThumbWithinTrack();
             updateThumbPosition();
         }
-        else if ((property == "Opacity") || (property == "OpacityDisabled"))
+        else if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
             Widget::rendererChanged(property);
 
@@ -617,12 +616,12 @@ namespace tgui
     std::unique_ptr<DataIO::Node> Slider::save(SavingRenderersMap& renderers) const
     {
         auto node = Widget::save(renderers);
-        node->propertyValuePairs["Minimum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_minimum));
-        node->propertyValuePairs["Maximum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_maximum));
-        node->propertyValuePairs["Value"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_value));
-        node->propertyValuePairs["Step"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_step));
-        node->propertyValuePairs["InvertedDirection"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_invertedDirection));
-        node->propertyValuePairs["ChangeValueOnScroll"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_changeValueOnScroll));
+        node->propertyValuePairs[U"Minimum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_minimum));
+        node->propertyValuePairs[U"Maximum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_maximum));
+        node->propertyValuePairs[U"Value"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_value));
+        node->propertyValuePairs[U"Step"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_step));
+        node->propertyValuePairs[U"InvertedDirection"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_invertedDirection));
+        node->propertyValuePairs[U"ChangeValueOnScroll"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_changeValueOnScroll));
         return node;
     }
 
@@ -632,18 +631,18 @@ namespace tgui
     {
         Widget::load(node, renderers);
 
-        if (node->propertyValuePairs["Minimum"])
-            setMinimum(node->propertyValuePairs["Minimum"]->value.toFloat());
-        if (node->propertyValuePairs["Maximum"])
-            setMaximum(node->propertyValuePairs["Maximum"]->value.toFloat());
-        if (node->propertyValuePairs["Value"])
-            setValue(node->propertyValuePairs["Value"]->value.toFloat());
-        if (node->propertyValuePairs["Step"])
-            setStep(node->propertyValuePairs["Step"]->value.toFloat());
-        if (node->propertyValuePairs["InvertedDirection"])
-            setInvertedDirection(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["InvertedDirection"]->value).getBool());
-        if (node->propertyValuePairs["ChangeValueOnScroll"])
-            setChangeValueOnScroll(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["ChangeValueOnScroll"]->value).getBool());
+        if (node->propertyValuePairs[U"Minimum"])
+            setMinimum(node->propertyValuePairs[U"Minimum"]->value.toFloat());
+        if (node->propertyValuePairs[U"Maximum"])
+            setMaximum(node->propertyValuePairs[U"Maximum"]->value.toFloat());
+        if (node->propertyValuePairs[U"Value"])
+            setValue(node->propertyValuePairs[U"Value"]->value.toFloat());
+        if (node->propertyValuePairs[U"Step"])
+            setStep(node->propertyValuePairs[U"Step"]->value.toFloat());
+        if (node->propertyValuePairs[U"InvertedDirection"])
+            setInvertedDirection(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"InvertedDirection"]->value).getBool());
+        if (node->propertyValuePairs[U"ChangeValueOnScroll"])
+            setChangeValueOnScroll(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"ChangeValueOnScroll"]->value).getBool());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -686,7 +685,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Slider::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void Slider::draw(BackendRenderTarget& target, RenderStates states) const
     {
         // Draw the borders around the track
         if (m_bordersCached != Borders{0})
@@ -746,6 +745,13 @@ namespace tgui
             else
                 target.drawFilledRect(states, thumbInnerSize, Color::applyOpacity(m_thumbColorCached, m_opacityCached));
         }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr Slider::clone() const
+    {
+        return std::make_shared<Slider>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

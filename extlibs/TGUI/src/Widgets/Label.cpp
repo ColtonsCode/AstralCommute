@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,19 +25,24 @@
 
 #include <TGUI/Widgets/Label.hpp>
 
-#include <cmath>
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <numeric> // accumulate
+    #include <algorithm>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char Label::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     Label::Label(const char* typeName, bool initRenderer) :
         ClickableWidget{typeName, false}
     {
-        m_draggableWidget = true;
-
         if (initRenderer)
         {
             m_renderer = aurora::makeCopied<LabelRenderer>();
@@ -50,7 +55,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Label::Ptr Label::create(String text)
+    Label::Ptr Label::create(const String& text)
     {
         auto label = std::make_shared<Label>();
 
@@ -62,7 +67,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Label::Ptr Label::copy(Label::ConstPtr label)
+    Label::Ptr Label::copy(const Label::ConstPtr& label)
     {
         if (label)
             return std::static_pointer_cast<Label>(label->clone());
@@ -89,13 +94,6 @@ namespace tgui
     LabelRenderer* Label::getRenderer()
     {
         return aurora::downcast<LabelRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    const LabelRenderer* Label::getRenderer() const
-    {
-        return aurora::downcast<const LabelRenderer*>(Widget::getRenderer());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -132,13 +130,9 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Label::setTextSize(unsigned int size)
+    void Label::updateTextSize()
     {
-        if (size != m_textSize)
-        {
-            m_textSize = size;
-            rearrangeText();
-        }
+        rearrangeText();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -187,6 +181,20 @@ namespace tgui
     Scrollbar::Policy Label::getScrollbarPolicy() const
     {
         return m_scrollbarPolicy;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void Label::setScrollbarValue(unsigned int value)
+    {
+        m_scrollbar->setValue(value);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    unsigned int Label::getScrollbarValue() const
+    {
+        return m_scrollbar->getValue();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -270,15 +278,18 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Label::leftMousePressed(Vector2f pos)
+    bool Label::leftMousePressed(Vector2f pos)
     {
+        bool isDragging = false;
         if (m_scrollbar->isShown() && m_scrollbar->isMouseOnWidget(pos - getPosition()))
         {
             m_mouseDown = true;
-            m_scrollbar->leftMousePressed(pos - getPosition());
+            isDragging = m_scrollbar->leftMousePressed(pos - getPosition());
         }
         else
             ClickableWidget::leftMousePressed(pos);
+
+        return isDragging;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -331,13 +342,10 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    bool Label::mouseWheelScrolled(float delta, Vector2f pos)
+    bool Label::scrolled(float delta, Vector2f pos, bool touch)
     {
         if (!m_autoSize && m_scrollbar->isShown())
-        {
-            m_scrollbar->mouseWheelScrolled(delta, pos - getPosition());
-            return true;
-        }
+            return m_scrollbar->scrolled(delta, pos - getPosition(), touch);
 
         return false;
     }
@@ -373,7 +381,7 @@ namespace tgui
 
     void Label::rendererChanged(const String& property)
     {
-        if (property == "Borders")
+        if (property == U"Borders")
         {
             m_bordersCached = getSharedRenderer()->getBorders();
             m_bordersCached.updateParentSize(getSize());
@@ -381,70 +389,75 @@ namespace tgui
                                         getSize().y - m_bordersCached.getTop() - m_bordersCached.getBottom()});
             rearrangeText();
         }
-        else if (property == "Padding")
+        else if (property == U"Padding")
         {
             m_paddingCached = getSharedRenderer()->getPadding();
             m_paddingCached.updateParentSize(getSize());
             rearrangeText();
         }
-        else if (property == "TextStyle")
+        else if (property == U"TextStyle")
         {
             m_textStyleCached = getSharedRenderer()->getTextStyle();
             rearrangeText();
         }
-        else if (property == "TextColor")
+        else if (property == U"TextColor")
         {
             m_textColorCached = getSharedRenderer()->getTextColor();
             for (auto& line : m_lines)
-                line.setColor(m_textColorCached);
+            {
+                for (auto& textPiece : line)
+                    textPiece.setColor(m_textColorCached);
+            }
         }
-        else if (property == "BorderColor")
+        else if (property == U"BorderColor")
         {
             m_borderColorCached = getSharedRenderer()->getBorderColor();
         }
-        else if (property == "BackgroundColor")
+        else if (property == U"BackgroundColor")
         {
             m_backgroundColorCached = getSharedRenderer()->getBackgroundColor();
         }
-        else if (property == "TextureBackground")
+        else if (property == U"TextureBackground")
         {
             m_spriteBackground.setTexture(getSharedRenderer()->getTextureBackground());
         }
-        else if (property == "TextOutlineThickness")
+        else if (property == U"TextOutlineThickness")
         {
             m_textOutlineThicknessCached = getSharedRenderer()->getTextOutlineThickness();
-            for (auto& line : m_lines)
-                line.setOutlineThickness(m_textOutlineThicknessCached);
+            rearrangeText();
         }
-        else if (property == "TextOutlineColor")
+        else if (property == U"TextOutlineColor")
         {
             m_textOutlineColorCached = getSharedRenderer()->getTextOutlineColor();
             for (auto& line : m_lines)
-                line.setOutlineColor(m_textOutlineColorCached);
+            {
+                for (auto& textPiece : line)
+                    textPiece.setOutlineColor(m_textOutlineColorCached);
+            }
         }
-        else if (property == "Scrollbar")
+        else if (property == U"Scrollbar")
         {
             m_scrollbar->setRenderer(getSharedRenderer()->getScrollbar());
 
             // If no scrollbar width was set then we may need to use the one from the texture
-            if (!getSharedRenderer()->getScrollbarWidth())
+            if (getSharedRenderer()->getScrollbarWidth() == 0)
             {
                 m_scrollbar->setSize({m_scrollbar->getDefaultWidth(), m_scrollbar->getSize().y});
                 rearrangeText();
             }
         }
-        else if (property == "ScrollbarWidth")
+        else if (property == U"ScrollbarWidth")
         {
-            const float width = getSharedRenderer()->getScrollbarWidth() ? getSharedRenderer()->getScrollbarWidth() : m_scrollbar->getDefaultWidth();
+            const float width = (getSharedRenderer()->getScrollbarWidth() != 0) ? getSharedRenderer()->getScrollbarWidth() : m_scrollbar->getDefaultWidth();
             m_scrollbar->setSize({width, m_scrollbar->getSize().y});
             rearrangeText();
         }
-        else if (property == "Font")
+        else if (property == U"Font")
         {
             Widget::rendererChanged(property);
             rearrangeText();
         }
-        else if ((property == "Opacity") || (property == "OpacityDisabled"))
+        else if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
             Widget::rendererChanged(property);
 
@@ -452,7 +465,10 @@ namespace tgui
             m_scrollbar->setInheritedOpacity(m_opacityCached);
 
             for (auto& line : m_lines)
-                line.setOpacity(m_opacityCached);
+            {
+                for (auto& textPiece : line)
+                    textPiece.setOpacity(m_opacityCached);
+            }
         }
         else
             Widget::rendererChanged(property);
@@ -465,33 +481,32 @@ namespace tgui
         auto node = Widget::save(renderers);
 
         if (m_horizontalAlignment == Label::HorizontalAlignment::Center)
-            node->propertyValuePairs["HorizontalAlignment"] = std::make_unique<DataIO::ValueNode>("Center");
+            node->propertyValuePairs[U"HorizontalAlignment"] = std::make_unique<DataIO::ValueNode>("Center");
         else if (m_horizontalAlignment == Label::HorizontalAlignment::Right)
-            node->propertyValuePairs["HorizontalAlignment"] = std::make_unique<DataIO::ValueNode>("Right");
+            node->propertyValuePairs[U"HorizontalAlignment"] = std::make_unique<DataIO::ValueNode>("Right");
 
         if (m_verticalAlignment == Label::VerticalAlignment::Center)
-            node->propertyValuePairs["VerticalAlignment"] = std::make_unique<DataIO::ValueNode>("Center");
+            node->propertyValuePairs[U"VerticalAlignment"] = std::make_unique<DataIO::ValueNode>("Center");
         else if (m_verticalAlignment == Label::VerticalAlignment::Bottom)
-            node->propertyValuePairs["VerticalAlignment"] = std::make_unique<DataIO::ValueNode>("Bottom");
+            node->propertyValuePairs[U"VerticalAlignment"] = std::make_unique<DataIO::ValueNode>("Bottom");
 
         if (!m_string.empty())
-            node->propertyValuePairs["Text"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_string));
+            node->propertyValuePairs[U"Text"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_string));
         if (m_maximumTextWidth > 0)
-            node->propertyValuePairs["MaximumTextWidth"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_maximumTextWidth));
+            node->propertyValuePairs[U"MaximumTextWidth"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_maximumTextWidth));
         if (m_autoSize)
-            node->propertyValuePairs["AutoSize"] = std::make_unique<DataIO::ValueNode>("true");
+            node->propertyValuePairs[U"AutoSize"] = std::make_unique<DataIO::ValueNode>("true");
         if (m_ignoringMouseEvents)
-            node->propertyValuePairs["IgnoreMouseEvents"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_ignoringMouseEvents));
+            node->propertyValuePairs[U"IgnoreMouseEvents"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_ignoringMouseEvents));
 
         if (m_scrollbarPolicy != Scrollbar::Policy::Automatic)
         {
             if (m_scrollbarPolicy == Scrollbar::Policy::Always)
-                node->propertyValuePairs["ScrollbarPolicy"] = std::make_unique<DataIO::ValueNode>("Always");
+                node->propertyValuePairs[U"ScrollbarPolicy"] = std::make_unique<DataIO::ValueNode>("Always");
             else if (m_scrollbarPolicy == Scrollbar::Policy::Never)
-                node->propertyValuePairs["ScrollbarPolicy"] = std::make_unique<DataIO::ValueNode>("Never");
+                node->propertyValuePairs[U"ScrollbarPolicy"] = std::make_unique<DataIO::ValueNode>("Never");
         }
 
-        node->propertyValuePairs["TextSize"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_textSize));
         return node;
     }
 
@@ -501,52 +516,50 @@ namespace tgui
     {
         Widget::load(node, renderers);
 
-        if (node->propertyValuePairs["HorizontalAlignment"])
+        if (node->propertyValuePairs[U"HorizontalAlignment"])
         {
-            String alignment = Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs["HorizontalAlignment"]->value).getString();
-            if (alignment == "Right")
+            String alignment = Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs[U"HorizontalAlignment"]->value).getString();
+            if (alignment == U"Right")
                 setHorizontalAlignment(Label::HorizontalAlignment::Right);
-            else if (alignment == "Center")
+            else if (alignment == U"Center")
                 setHorizontalAlignment(Label::HorizontalAlignment::Center);
-            else if (alignment != "Left")
-                throw Exception{"Failed to parse HorizontalAlignment property, found unknown value."};
+            else if (alignment != U"Left")
+                throw Exception{U"Failed to parse HorizontalAlignment property, found unknown value."};
         }
 
-        if (node->propertyValuePairs["VerticalAlignment"])
+        if (node->propertyValuePairs[U"VerticalAlignment"])
         {
-            String alignment = Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs["VerticalAlignment"]->value).getString();
-            if (alignment == "Bottom")
+            String alignment = Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs[U"VerticalAlignment"]->value).getString();
+            if (alignment == U"Bottom")
                 setVerticalAlignment(Label::VerticalAlignment::Bottom);
-            else if (alignment == "Center")
+            else if (alignment == U"Center")
                 setVerticalAlignment(Label::VerticalAlignment::Center);
-            else if (alignment != "Top")
-                throw Exception{"Failed to parse VerticalAlignment property, found unknown value."};
+            else if (alignment != U"Top")
+                throw Exception{U"Failed to parse VerticalAlignment property, found unknown value."};
         }
 
-        if (node->propertyValuePairs["ScrollbarPolicy"])
+        if (node->propertyValuePairs[U"ScrollbarPolicy"])
         {
-            String policy = node->propertyValuePairs["ScrollbarPolicy"]->value.trim();
-            if (policy == "Automatic")
+            String policy = node->propertyValuePairs[U"ScrollbarPolicy"]->value.trim();
+            if (policy == U"Automatic")
                 setScrollbarPolicy(Scrollbar::Policy::Automatic);
-            else if (policy == "Always")
+            else if (policy == U"Always")
                 setScrollbarPolicy(Scrollbar::Policy::Always);
-            else if (policy == "Never")
+            else if (policy == U"Never")
                 setScrollbarPolicy(Scrollbar::Policy::Never);
             else
-                throw Exception{"Failed to parse ScrollbarPolicy property, found unknown value '" + policy + "'."};
+                throw Exception{U"Failed to parse ScrollbarPolicy property, found unknown value '" + policy + U"'."};
         }
 
-        if (node->propertyValuePairs["Text"])
-            setText(Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs["Text"]->value).getString());
-        if (node->propertyValuePairs["TextSize"])
-            setTextSize(node->propertyValuePairs["TextSize"]->value.toInt());
-        if (node->propertyValuePairs["MaximumTextWidth"])
-            setMaximumTextWidth(node->propertyValuePairs["MaximumTextWidth"]->value.toFloat());
-        if (node->propertyValuePairs["AutoSize"])
-            setAutoSize(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["AutoSize"]->value).getBool());
+        if (node->propertyValuePairs[U"Text"])
+            setText(Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs[U"Text"]->value).getString());
+        if (node->propertyValuePairs[U"MaximumTextWidth"])
+            setMaximumTextWidth(node->propertyValuePairs[U"MaximumTextWidth"]->value.toFloat());
+        if (node->propertyValuePairs[U"AutoSize"])
+            setAutoSize(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"AutoSize"]->value).getBool());
 
-        if (node->propertyValuePairs["IgnoreMouseEvents"])
-            ignoreMouseEvents(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["IgnoreMouseEvents"]->value).getBool());
+        if (node->propertyValuePairs[U"IgnoreMouseEvents"])
+            ignoreMouseEvents(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"IgnoreMouseEvents"]->value).getBool());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -573,7 +586,7 @@ namespace tgui
         if (m_fontCached == nullptr)
             return;
 
-        const float textOffset = Text::getExtraHorizontalPadding(m_fontCached, m_textSize, m_textStyleCached);
+        const float textOffset = Text::getExtraHorizontalPadding(m_fontCached, m_textSizeCached);
 
         // Show or hide the scrollbar
         if (m_autoSize)
@@ -613,17 +626,20 @@ namespace tgui
         }
 
         // Fit the text in the available space
-        String string = Text::wordWrap(maxWidth, m_string, m_fontCached, m_textSize, m_textStyleCached & TextStyle::Bold);
+        Optional<String> wordWrappedString = (maxWidth > 0)
+            ? Text::wordWrap(maxWidth, m_string, m_fontCached, m_textSizeCached, m_textStyleCached & TextStyle::Bold)
+            : Optional<String>();
+        String* stringPtr = wordWrappedString.has_value() ? &wordWrappedString.value() : &m_string;
 
         const Outline outline = {m_paddingCached.getLeft() + m_bordersCached.getLeft(),
                                  m_paddingCached.getTop() + m_bordersCached.getTop(),
                                  m_paddingCached.getRight() + m_bordersCached.getRight(),
                                  m_paddingCached.getBottom() + m_bordersCached.getBottom()};
 
-        const auto lineCount = std::count(string.begin(), string.end(), U'\n') + 1;
-        float requiredTextHeight = lineCount * m_fontCached.getLineSpacing(m_textSize)
-                                   + Text::calculateExtraVerticalSpace(m_fontCached, m_textSize, m_textStyleCached)
-                                   + Text::getExtraVerticalPadding(m_textSize);
+        const auto lineCount = std::count(stringPtr->begin(), stringPtr->end(), U'\n') + 1;
+        float requiredTextHeight = (lineCount - 1) * m_fontCached.getLineSpacing(m_textSizeCached)
+                                 + std::max(m_fontCached.getFontHeight(m_textSizeCached), m_fontCached.getLineSpacing(m_textSizeCached))
+                                 + Text::getExtraVerticalPadding(m_textSizeCached);
 
         // Check if a scrollbar should be added
         if (!m_autoSize)
@@ -635,19 +651,20 @@ namespace tgui
                 if (maxWidth <= 0)
                     return;
 
-                string = Text::wordWrap(maxWidth, m_string, m_fontCached, m_textSize, m_textStyleCached & TextStyle::Bold);
+                wordWrappedString = Text::wordWrap(maxWidth, m_string, m_fontCached, m_textSizeCached, m_textStyleCached & TextStyle::Bold);
+                stringPtr = &wordWrappedString.value();
 
-                const auto newLineCount = std::count(string.begin(), string.end(), U'\n') + 1;
-                requiredTextHeight = newLineCount * m_fontCached.getLineSpacing(m_textSize)
-                                     + Text::calculateExtraVerticalSpace(m_fontCached, m_textSize, m_textStyleCached)
-                                     + Text::getExtraVerticalPadding(m_textSize);
+                const auto newLineCount = std::count(stringPtr->begin(), stringPtr->end(), U'\n') + 1;
+                requiredTextHeight = (newLineCount - 1) * m_fontCached.getLineSpacing(m_textSizeCached)
+                                   + std::max(m_fontCached.getFontHeight(m_textSizeCached), m_fontCached.getLineSpacing(m_textSizeCached))
+                                   + Text::getExtraVerticalPadding(m_textSizeCached);
             }
 
             m_scrollbar->setSize(m_scrollbar->getSize().x, static_cast<unsigned int>(getSize().y - m_bordersCached.getTop() - m_bordersCached.getBottom()));
             m_scrollbar->setViewportSize(static_cast<unsigned int>(getSize().y - outline.getTop() - outline.getBottom()));
             m_scrollbar->setMaximum(static_cast<unsigned int>(requiredTextHeight));
             m_scrollbar->setPosition({getSize().x - m_bordersCached.getRight() - m_scrollbar->getSize().x, m_bordersCached.getTop()});
-            m_scrollbar->setScrollAmount(m_textSize);
+            m_scrollbar->setScrollAmount(m_textSizeCached);
         }
 
         // Split the string in multiple lines
@@ -656,24 +673,25 @@ namespace tgui
         std::size_t newLinePos = 0;
         while (newLinePos != String::npos)
         {
-            newLinePos = string.find('\n', searchPosStart);
+            newLinePos = stringPtr->find('\n', searchPosStart);
 
             TGUI_EMPLACE_BACK(line, m_lines)
-            line.setCharacterSize(getTextSize());
-            line.setFont(m_fontCached);
-            line.setStyle(m_textStyleCached);
-            line.setColor(m_textColorCached);
-            line.setOpacity(m_opacityCached);
-            line.setOutlineColor(m_textOutlineColorCached);
-            line.setOutlineThickness(m_textOutlineThicknessCached);
+            TGUI_EMPLACE_BACK(textPiece, line)
+            textPiece.setCharacterSize(getTextSize());
+            textPiece.setFont(m_fontCached);
+            textPiece.setStyle(m_textStyleCached);
+            textPiece.setColor(m_textColorCached);
+            textPiece.setOpacity(m_opacityCached);
+            textPiece.setOutlineColor(m_textOutlineColorCached);
+            textPiece.setOutlineThickness(m_textOutlineThicknessCached);
 
             if (newLinePos != String::npos)
-                line.setString(string.substr(searchPosStart, newLinePos - searchPosStart));
+                textPiece.setString(stringPtr->substr(searchPosStart, newLinePos - searchPosStart));
             else
-                line.setString(string.substr(searchPosStart));
+                textPiece.setString(stringPtr->substr(searchPosStart));
 
-            if (line.getSize().x > width)
-                width = line.getSize().x;
+            if (textPiece.getSize().x > width)
+                width = textPiece.getSize().x;
 
             searchPosStart = newLinePos + 1;
         }
@@ -689,60 +707,138 @@ namespace tgui
                                         getSize().y - m_bordersCached.getTop() - m_bordersCached.getBottom()});
         }
 
-        // Update the line positions
+        updateTextPiecePositions((maxWidth > 0) ? maxWidth : width);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void Label::updateTextPiecePositions(float maxWidth)
+    {
+        TGUI_ASSERT(!m_lines.empty(), "Label::updateTextPiecePositions requires that m_lines contains at least one line");
+
+        const Outline outline = {m_paddingCached.getLeft() + m_bordersCached.getLeft(),
+                                 m_paddingCached.getTop() + m_bordersCached.getTop(),
+                                 m_paddingCached.getRight() + m_bordersCached.getRight(),
+                                 m_paddingCached.getBottom() + m_bordersCached.getBottom()};
+
+        if ((getSize().x <= outline.getLeft() + outline.getRight()) || (getSize().y <= outline.getTop() + outline.getBottom()))
+            return;
+
+        const float textOffset = Text::getExtraHorizontalPadding(m_fontCached, m_textSizeCached);
+
+        Vector2f pos{m_paddingCached.getLeft() + textOffset, m_paddingCached.getTop()};
+
+        // Calculate the line spacing for each line
+        std::vector<float> lineSpacings;
+        lineSpacings.reserve(m_lines.size());
+        const float defaultLineSpacing = m_fontCached.getLineSpacing(m_textSizeCached);
+        for (auto& line : m_lines)
         {
-            if ((getSize().x <= outline.getLeft() + outline.getRight()) || (getSize().y <= outline.getTop() + outline.getBottom()))
-                return;
-
-            Vector2f pos{m_paddingCached.getLeft() + textOffset, m_paddingCached.getTop()};
-
-            if (m_verticalAlignment != VerticalAlignment::Top)
+            if (line.empty())
+                lineSpacings.push_back(0);
+            else if (line.size() == 1 && line[0].getCharacterSize() == m_textSizeCached)
+                lineSpacings.push_back(defaultLineSpacing);
+            else
             {
-                const float totalHeight = getSize().y - outline.getTop() - outline.getBottom();
-                const float totalTextHeight = m_lines.size() * m_fontCached.getLineSpacing(m_textSize);
+                unsigned int lineMaxTextSize = 0;
+                for (const auto& textPiece : line)
+                    lineMaxTextSize = std::max(lineMaxTextSize, textPiece.getCharacterSize());
 
-                if (!m_scrollbar->isShown() || (totalTextHeight < totalHeight))
+                lineSpacings.push_back(m_fontCached.getLineSpacing(lineMaxTextSize));
+            }
+        }
+
+        if (m_verticalAlignment != VerticalAlignment::Top)
+        {
+            const float totalHeight = getSize().y - outline.getTop() - outline.getBottom();
+            float totalTextHeight = std::accumulate(lineSpacings.begin(), lineSpacings.end(), 0.f);
+
+            unsigned int lastLineMaxTextSize = 0;
+            for (const auto& textPiece : m_lines.back())
+                lastLineMaxTextSize = std::max(lastLineMaxTextSize, textPiece.getCharacterSize());
+
+            // Add some extra space below the last line, to not cut of low letters
+            const float lastLineFontHeight = m_fontCached.getFontHeight(lastLineMaxTextSize);
+            const float lastLineLineSpacing = m_fontCached.getLineSpacing(lastLineMaxTextSize);
+            totalTextHeight += Text::getExtraVerticalPadding(m_textSizeCached);
+            if (lastLineFontHeight > lastLineLineSpacing)
+                totalTextHeight += (lastLineFontHeight - lastLineLineSpacing);
+
+            if (!m_scrollbar->isShown() || (totalTextHeight < totalHeight))
+            {
+                if (m_verticalAlignment == VerticalAlignment::Bottom)
+                    pos.y += totalHeight - totalTextHeight;
+                else // if (m_verticalAlignment == VerticalAlignment::Center)
+                    pos.y += (totalHeight - totalTextHeight) / 2.f;
+            }
+        }
+
+        for (std::size_t i = 0; i < m_lines.size(); ++i)
+        {
+            auto& line = m_lines[i];
+
+            float maxHeight = 0;
+            for (std::size_t j = 0; j < line.size(); ++j)
+                maxHeight = std::max(maxHeight, line[j].getSize().y);
+
+            Vector2f piecePos = pos;
+            if ((m_horizontalAlignment != HorizontalAlignment::Left) && !line.empty())
+            {
+                // If the line ends with whitespace then remove them from the line width for aligning horizontally
+                const auto& lastTextPiece = line.back();
+                std::size_t charsToUse = lastTextPiece.getString().length();
+                while (charsToUse > 0 && isWhitespace(lastTextPiece.getString()[charsToUse-1]))
+                    charsToUse--;
+
+                float whitespaceOffset = 0;
+                if (charsToUse != lastTextPiece.getString().length())
+                    whitespaceOffset = lastTextPiece.getSize().x - lastTextPiece.findCharacterPos(charsToUse).x;
+
+                float textWidth = lastTextPiece.getSize().x - whitespaceOffset;
+                for (std::size_t j = line.size() - 1; j > 0; --j)
                 {
-                    if (m_verticalAlignment == VerticalAlignment::Center)
-                        pos.y += (totalHeight - totalTextHeight) / 2.f;
-                    else if (m_verticalAlignment == VerticalAlignment::Bottom)
-                        pos.y += totalHeight - totalTextHeight;
+                    textWidth += line[j-1].getSize().x;
+
+                    // Take kerning into account
+                    if (!line[j-1].getString().empty() && !line[j].getString().empty())
+                    {
+                        const bool bold = ((line[j-1].getStyle() & TextStyle::Bold) != 0) && ((line[j].getStyle() & TextStyle::Bold) != 0);
+                        const unsigned int characterSize = std::min(line[j-1].getCharacterSize(), line[j].getCharacterSize());
+                        textWidth += m_fontCached.getKerning(line[j-1].getString().back(), line[j].getString().front(), characterSize, bold);
+                    }
                 }
+
+                if (m_horizontalAlignment == HorizontalAlignment::Right)
+                    piecePos.x = pos.x + maxWidth - textWidth;
+                else // if (m_horizontalAlignment == HorizontalAlignment::Center)
+                    piecePos.x = pos.x + ((maxWidth - textWidth) / 2.f);
             }
 
-            const float lineSpacing = m_fontCached.getLineSpacing(m_textSize);
-            if ((m_horizontalAlignment == HorizontalAlignment::Left) || (m_autoSize && (maxWidth == 0)))
+            for (std::size_t j = 0; j < line.size(); ++j)
             {
-                for (auto& line : m_lines)
+                // If pieces have a different text size then we align their bottom position.
+                // This isn't ideal, we should align the baseline, but it is at least better than aligning the top.
+                piecePos.y = pos.y + (maxHeight - line[j].getSize().y);
+
+                // Take kerning into account
+                if (j > 0 && !line[j-1].getString().empty() && !line[j].getString().empty())
                 {
-                    line.setPosition(pos);
-                    pos.y += lineSpacing;
+                    const bool bold = ((line[j-1].getStyle() & TextStyle::Bold) != 0) && ((line[j].getStyle() & TextStyle::Bold) != 0);
+                    const unsigned int characterSize = std::min(line[j-1].getCharacterSize(), line[j].getCharacterSize());
+                    piecePos.x += m_fontCached.getKerning(line[j-1].getString().back(), line[j].getString().front(), characterSize, bold);
                 }
+
+                line[j].setPosition(piecePos);
+                piecePos.x += line[j].getSize().x;
             }
-            else // Center or Right alignment
-            {
-                for (auto& line : m_lines)
-                {
-                    std::size_t lastChar = line.getString().length();
-                    while (lastChar > 0 && isWhitespace(line.getString()[lastChar-1]))
-                        lastChar--;
 
-                    const float textWidth = line.findCharacterPos(lastChar).x;
-
-                    if (m_horizontalAlignment == HorizontalAlignment::Center)
-                        line.setPosition({pos.x + ((maxWidth - textWidth) / 2.f), pos.y});
-                    else // if (m_horizontalAlignment == HorizontalAlignment::Right)
-                        line.setPosition({pos.x + maxWidth - textWidth, pos.y});
-
-                    pos.y += lineSpacing;
-                }
-            }
+            pos.y += lineSpacings[i];
         }
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Label::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void Label::draw(BackendRenderTarget& target, RenderStates states) const
     {
         const RenderStates statesForScrollbar = states;
 
@@ -770,7 +866,10 @@ namespace tgui
         if (m_autoSize)
         {
             for (const auto& line : m_lines)
-                target.drawText(states, line);
+            {
+                for (const auto& text : line)
+                    target.drawText(states, text);
+            }
         }
         else
         {
@@ -783,10 +882,20 @@ namespace tgui
                 states.transform.translate({0, -static_cast<float>(m_scrollbar->getValue())});
 
             for (const auto& line : m_lines)
-                target.drawText(states, line);
+            {
+                for (const auto& text : line)
+                    target.drawText(states, text);
+            }
 
             target.removeClippingLayer();
         }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr Label::clone() const
+    {
+        return std::make_shared<Label>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

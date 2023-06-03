@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -28,12 +28,15 @@
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char TabContainer::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     TabContainer::TabContainer(const char* typeName, bool initRenderer) :
         SubwidgetContainer{typeName, initRenderer}
     {
-        m_tabs = Tabs::create();
         m_container->add(m_tabs, "Tabs");
         init();
     }
@@ -49,7 +52,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    TabContainer::Ptr TabContainer::copy(TabContainer::ConstPtr tabContainer)
+    TabContainer::Ptr TabContainer::copy(const TabContainer::ConstPtr& tabContainer)
     {
         if (tabContainer)
             return std::static_pointer_cast<TabContainer>(tabContainer->clone());
@@ -80,25 +83,19 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    const TabsRenderer* TabContainer::getTabsRenderer() const
-    {
-        return m_tabs->getRenderer();
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     void TabContainer::setSize(const Layout2d& size)
     {
         SubwidgetContainer::setSize(size);
 
-        m_tabs->setWidth(size.x);
-        for (auto& ptr : m_panels)
-            ptr->setSize({ size.x , size.y - m_tabs->getSize().y });
+        for (auto& panel : m_panels)
+            panel->setSize({getSize().x, getSize().y - m_tabs->getSize().y});
+
+        layoutTabs();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void TabContainer::setTabsHeight(Layout height)
+    void TabContainer::setTabsHeight(const Layout& height)
     {
         m_tabs->setHeight(height);
         setSize(getSizeLayout());
@@ -110,13 +107,15 @@ namespace tgui
     {
         auto panel = Panel::create();
         panel->setSize({getSize().x , getSize().y - m_tabs->getSize().y});
-        panel->setPosition({bindLeft(m_tabs), bindBottom(m_tabs)});
+        layoutPanel(panel);
 
         m_panels.push_back(panel);
-        m_tabs->add(name, selectPanel);
-        m_container->add(panel);
+        m_tabs->add(name, false);
+        layoutTabs();
+
+        m_container->add(panel, name);
         if (selectPanel)
-            select(m_panels.size() - 1, false);
+            select(m_panels.size() - 1);
         else
             panel->setVisible(false);
 
@@ -132,22 +131,19 @@ namespace tgui
 
         auto panel = Panel::create();
         panel->setSize({getSize().x , getSize().y - m_tabs->getSize().y});
-        panel->setPosition({bindLeft(m_tabs), bindBottom(m_tabs)});
+        layoutPanel(panel);
 
-        m_panels.insert(m_panels.begin() + index, panel);
-        m_tabs->insert(index, name, selectPanel);
+        m_panels.insert(m_panels.begin() + static_cast<std::ptrdiff_t>(index), panel);
+        m_tabs->insert(index, name, false);
+        layoutTabs();
 
         m_container->add(panel);
-        m_container->setWidgetIndex(panel, index);
+        m_container->setWidgetIndex(panel, index + 1); // Plus one because first widget is Tabs
 
         if (selectPanel)
-            select(m_panels.size() - 1, false);
+            select(index);
         else
-        {
             panel->setVisible(false);
-            if (static_cast<int>(index) <= m_index)
-                ++m_index;
-        }
 
         return panel;
     }
@@ -173,90 +169,46 @@ namespace tgui
             return false;
 
         m_tabs->remove(index);
+        layoutTabs();
+
         m_container->remove(m_panels[index]);
-        m_panels.erase(m_panels.begin() + index);
-        select(m_tabs->getSelectedIndex());
-        return true;
-    }
+        m_panels.erase(m_panels.begin() + static_cast<std::ptrdiff_t>(index));
 
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#ifndef TGUI_REMOVE_DEPRECATED_CODE
-    void TabContainer::addPanel(Panel::Ptr ptr, const String& name, bool selectPanel)
-    {
-        auto size = getSizeLayout();
-        ptr->setSize({ size.x , size.y - m_tabs->getSize().y });
-        ptr->setPosition({ bindLeft(m_tabs), bindBottom(m_tabs) });
-
-        m_panels.push_back(ptr);
-        m_tabs->add(name, selectPanel);
-        m_container->add(ptr);
-        if (selectPanel)
-            select(m_panels.size() - 1, false);
+        if (m_tabs->getSelectedIndex() >= 0)
+            select(static_cast<std::size_t>(m_tabs->getSelectedIndex()));
         else
-            ptr->setVisible(false);
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    bool TabContainer::insertPanel(Panel::Ptr ptr, const String& name, std::size_t index, bool selectPanel)
-    {
-        if (index > m_panels.size())
-            return false;
-
-TGUI_IGNORE_DEPRECATED_WARNINGS_START
-        addPanel(ptr, name, selectPanel);
-TGUI_IGNORE_DEPRECATED_WARNINGS_END
-
-        auto size = m_panels.size();
-        if (index != size)
         {
-            std::swap(m_panels[index], m_panels[size - 1]);
-            if (!selectPanel)
-                m_index = static_cast<int>(size - 1);
+            // Select the last tab when the selected tab is removed
+            if (!m_panels.empty())
+                select(m_panels.size() - 1);
+            else
+                m_selectedPanel = nullptr;
         }
+
         return true;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void TabContainer::removePanel(Panel::Ptr ptr)
+    void TabContainer::select(std::size_t index)
     {
-        if (ptr != nullptr)
-        {
-            auto idx = getIndex(ptr);
-            if (idx != -1)
-            {
-                m_tabs->remove(idx);
-                m_container->remove(m_panels[idx]);
-                m_panels.erase(m_panels.begin() + idx);
-                select(m_tabs->getSelectedIndex());
-            }
-        }
-    }
-#endif
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    void TabContainer::select(std::size_t index, bool genEvents)
-    {
-        if (index >= m_panels.size() || index == static_cast<std::size_t>(m_index))
+        if ((index >= m_panels.size()) || (m_selectedPanel == m_panels[index]))
             return;
 
-        if (genEvents)
-        {
-            bool isVetoed = false;
-            onSelectionChanging.emit(this, static_cast<int>(index), &isVetoed);
-            if (isVetoed)
-                return;
-        }
+        bool isVetoed = false;
+        onSelectionChanging.emit(this, static_cast<int>(index), &isVetoed);
+        if (isVetoed)
+            return;
 
-        if (m_index != -1)
-            m_panels[m_index]->setVisible(false);
+        if (m_selectedPanel)
+            m_selectedPanel->setVisible(false);
 
-        m_index = static_cast<int>(index);
-        m_tabs->select(index);
         m_panels[index]->setVisible(true);
-        if (genEvents)
-            onSelectionChanged.emit(this, m_index);
+        m_selectedPanel = m_panels[index];
+
+        m_tabs->select(index);
+
+        onSelectionChanged.emit(this, static_cast<int>(index));
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -268,9 +220,9 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    int TabContainer::getIndex(Panel::Ptr ptr)
+    int TabContainer::getIndex(const Panel::Ptr& ptr)
     {
-        for (std::size_t i = 0; i < m_panels.size(); i++)
+        for (std::size_t i = 0; i < m_panels.size(); ++i)
         {
             if (m_panels[i] == ptr)
                 return static_cast<int>(i);
@@ -283,14 +235,14 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
 
     Panel::Ptr TabContainer::getSelected()
     {
-        return getPanel(m_index);
+        return m_selectedPanel;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     int TabContainer::getSelectedIndex() const
     {
-        return m_index;
+        return m_tabs->getSelectedIndex();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -300,7 +252,7 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
         if (index < 0 || index >= static_cast<int>(m_panels.size()))
             return nullptr;
 
-        return m_panels[index];
+        return m_panels[static_cast<std::size_t>(index)];
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -319,9 +271,91 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    void TabContainer::layoutTabs()
+    {
+        if (m_tabFixedSize > 0.0f)
+            m_tabs->setWidth(m_tabFixedSize * getPanelCount());
+        else
+            m_tabs->setWidth(getSize().x);
+
+        if (m_tabAlign == TabContainer::TabAlign::Top)
+            m_tabs->setPosition(0.0f, 0.0f);
+        else
+            m_tabs->setPosition(0.0f, getSize().y - m_tabs->getSize().y);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void TabContainer::layoutPanel(const Panel::Ptr& panel)
+    {
+        if (m_tabAlign == TabContainer::TabAlign::Top)
+            panel->setPosition(0.0f, bindBottom(m_tabs));
+        else
+            panel->setPosition(0.0f, 0.0f);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void TabContainer::setTabAlignment(TabAlign align)
+    {
+        if (m_tabAlign == align)
+            return;
+
+        m_tabAlign = align;
+
+        layoutTabs();
+
+        for (const auto& panel : m_panels)
+            layoutPanel(panel);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    TabContainer::TabAlign TabContainer::getTabAlignment() const
+    {
+        return m_tabAlign;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void TabContainer::setTabFixedSize(float fixedSize)
+    {
+        if (m_tabFixedSize == fixedSize)
+            return;
+
+        m_tabFixedSize = fixedSize;
+
+        layoutTabs();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    float TabContainer::getTabFixedSize() const
+    {
+        return m_tabFixedSize;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     bool TabContainer::changeTabText(std::size_t index, const String& text)
     {
         return m_tabs->changeText(index, text);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    std::unique_ptr<DataIO::Node> TabContainer::save(SavingRenderersMap& renderers) const
+    {
+        auto node = SubwidgetContainer::save(renderers);
+
+        if (m_tabAlign == TabContainer::TabAlign::Top)
+            node->propertyValuePairs[U"TabAlignment"] = std::make_unique<DataIO::ValueNode>("Top");
+        else
+            node->propertyValuePairs[U"TabAlignment"] = std::make_unique<DataIO::ValueNode>("Bottom");
+
+        node->propertyValuePairs[U"TabFixedSize"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_tabFixedSize));
+
+        return node;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -330,20 +364,45 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
     {
         SubwidgetContainer::load(node, renderers);
 
-        m_index = -1;
-        m_tabs = m_container->get<Tabs>("Tabs");
-
-        auto widgets = m_container->getWidgets();
-        m_panels.resize(widgets.size() - 1);
-        auto size = getSizeLayout();
-        for (std::size_t i = 1; i < widgets.size(); i++)
+        // Buffer the value to apply it after child widget creation with default align.
+        auto tabAlign = TabContainer::TabAlign::Top;
+        if (node->propertyValuePairs[U"TabAlignment"])
         {
-            m_panels[i - 1] = std::static_pointer_cast<Panel>(widgets[i]);
-            m_panels[i - 1]->setSize({ size.x , size.y - m_tabs->getSize().y });
-            m_panels[i - 1]->setPosition({ bindLeft(m_tabs), bindBottom(m_tabs) });
+            String alignment = Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs[U"TabAlignment"]->value).getString();
+            if (alignment == U"Bottom")
+                tabAlign = TabContainer::TabAlign::Bottom;
+            else if (alignment != U"Top")
+                throw Exception{U"Failed to parse TabAlignment property, found unknown value."};
         }
 
-        select(m_tabs->getSelectedIndex());
+        // Buffer the value to apply it after child widget creation with default size.
+        float tabFixedSize = Deserializer::deserialize(ObjectConverter::Type::Number, node->propertyValuePairs[U"TabFixedSize"]->value).getNumber();
+
+        m_panels.clear();
+        m_selectedPanel = nullptr;
+
+        m_tabs = m_container->get<Tabs>(U"Tabs");
+        m_tabAlign = TabAlign::Top;
+        if (!m_tabs)
+            throw Exception{U"Failed to find Tabs child when loading TabContainer"};
+
+        auto widgets = m_container->getWidgets();
+        for (const auto& widget : widgets)
+        {
+            auto panel = std::dynamic_pointer_cast<Panel>(widget);
+            if (!panel)
+                continue;
+
+            panel->setSize({getSize().x, getSize().y - m_tabs->getSize().y});
+            layoutPanel(panel);
+            m_panels.push_back(panel);
+        }
+
+        // Apply buffered values.
+        setTabAlignment(tabAlign);
+        setTabFixedSize(tabFixedSize);
+        if (m_tabs->getSelectedIndex())
+            select(static_cast<std::size_t>(m_tabs->getSelectedIndex()));
         init();
     }
 
@@ -351,12 +410,18 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
 
     void TabContainer::init()
     {
+        layoutTabs();
         m_tabs->onTabSelect([this](){
-            auto cur = m_tabs->getSelectedIndex();
-            select(cur);
-            if (m_tabs->getSelectedIndex() != m_index)
-                m_tabs->select(m_index);
+            TGUI_ASSERT(m_tabs->getSelectedIndex() >= 0, "TabContainer relies on Tabs::onTabSelect not firing on deselect");
+            select(static_cast<std::size_t>(m_tabs->getSelectedIndex()));
         });
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr TabContainer::clone() const
+    {
+        return std::make_shared<TabContainer>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

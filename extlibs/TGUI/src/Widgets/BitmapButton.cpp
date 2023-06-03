@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,10 +25,18 @@
 
 #include <TGUI/Widgets/BitmapButton.hpp>
 
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cmath>
+#endif
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char BitmapButton::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     BitmapButton::BitmapButton(const char* typeName, bool initRenderer) :
@@ -53,7 +61,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    BitmapButton::BitmapButton(BitmapButton&& other) :
+    BitmapButton::BitmapButton(BitmapButton&& other) noexcept :
         Button               (std::move(other)),
         icon                 (std::move(other.icon)),
         m_imageComponent     (std::make_shared<priv::dev::ImageComponent>(*other.m_imageComponent, &icon)),
@@ -68,8 +76,6 @@ namespace tgui
     {
         if (&other != this)
         {
-            text.style.disconnectCallback(m_textStyleChangedCallbackId);
-
             Button::operator=(other);
             icon = other.icon;
             m_imageComponent = std::make_shared<priv::dev::ImageComponent>(*other.m_imageComponent, &icon);
@@ -83,28 +89,19 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    BitmapButton& BitmapButton::operator=(BitmapButton&& other)
+    BitmapButton& BitmapButton::operator=(BitmapButton&& other) noexcept
     {
         if (&other != this)
         {
-            text.style.disconnectCallback(m_textStyleChangedCallbackId);
-
-            Button::operator=(std::move(other));
             icon = std::move(other.icon);
             m_imageComponent = std::make_shared<priv::dev::ImageComponent>(*other.m_imageComponent, &icon);
             m_relativeGlyphHeight = std::move(other.m_relativeGlyphHeight);
+            Button::operator=(std::move(other));
 
             initComponentsBitmapButton();
         }
 
         return *this;
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    BitmapButton::~BitmapButton()
-    {
-        text.style.disconnectCallback(m_textStyleChangedCallbackId);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -121,7 +118,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    BitmapButton::Ptr BitmapButton::copy(BitmapButton::ConstPtr button)
+    BitmapButton::Ptr BitmapButton::copy(const BitmapButton::ConstPtr& button)
     {
         if (button)
             return std::static_pointer_cast<BitmapButton>(button->clone());
@@ -140,40 +137,17 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void BitmapButton::setText(const String& caption)
-    {
-        m_string = caption;
-        m_textComponent->setString(caption);
-        if (m_textSize != 0)
-            m_textComponent->setCharacterSize(m_textSize);
-
-        if (m_autoSize && (m_textSize != 0))
-        {
-            m_updatingSizeWhileSettingText = true;
-            updateSize();
-            m_updatingSizeWhileSettingText = false;
-        }
-        else
-            updateComponentPositions();
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     void BitmapButton::setImage(const Texture& image)
     {
         priv::dev::setOptionalPropertyValue(icon, image, priv::dev::ComponentState::Normal);
 
         if (image.getData())
         {
-            m_textComponent->setPositionAlignment(priv::dev::PositionAlignment::None);
             m_imageComponent->setSize(Vector2f{image.getImageSize()});
             m_imageComponent->setVisible(true);
         }
         else
-        {
-            m_textComponent->setPositionAlignment(priv::dev::PositionAlignment::Center);
             m_imageComponent->setVisible(false);
-        }
 
         updateSize();
     }
@@ -204,7 +178,7 @@ namespace tgui
 
     void BitmapButton::rendererChanged(const String& property)
     {
-        if ((property == "Opacity") || (property == "OpacityDisabled"))
+        if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
             Button::rendererChanged(property);
             m_imageComponent->setOpacity(m_opacityCached);
@@ -218,8 +192,8 @@ namespace tgui
     std::unique_ptr<DataIO::Node> BitmapButton::save(SavingRenderersMap& renderers) const
     {
         auto node = Button::save(renderers);
-        node->propertyValuePairs["Image"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(icon.getValue()));
-        node->propertyValuePairs["ImageScaling"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_relativeGlyphHeight));
+        node->propertyValuePairs[U"Image"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(icon.getValue()));
+        node->propertyValuePairs[U"ImageScaling"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_relativeGlyphHeight));
         return node;
     }
 
@@ -229,10 +203,10 @@ namespace tgui
     {
         Button::load(node, renderers);
 
-        if (node->propertyValuePairs["Image"])
-            setImage(Deserializer::deserialize(ObjectConverter::Type::Texture, node->propertyValuePairs["Image"]->value).getTexture());
-        if (node->propertyValuePairs["ImageScaling"])
-            setImageScaling(Deserializer::deserialize(ObjectConverter::Type::Number, node->propertyValuePairs["ImageScaling"]->value).getNumber());
+        if (node->propertyValuePairs[U"Image"])
+            setImage(Deserializer::deserialize(ObjectConverter::Type::Texture, node->propertyValuePairs[U"Image"]->value).getTexture());
+        if (node->propertyValuePairs[U"ImageScaling"])
+            setImageScaling(Deserializer::deserialize(ObjectConverter::Type::Number, node->propertyValuePairs[U"ImageScaling"]->value).getNumber());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -248,20 +222,26 @@ namespace tgui
         if (m_autoSize)
         {
             const Outline& borders = m_backgroundComponent->getBorders();
-            Widget::setSize({getSize().x, m_textComponent->getLineHeight() * 1.25f + borders.getTop() + borders.getBottom()});
+
+            // NOLINTNEXTLINE(bugprone-parent-virtual-call)
+            Widget::setSize({getSize().x, std::round(m_textComponent->getLineHeight() * 1.25f) + borders.getTop() + borders.getBottom()});
 
             recalculateGlyphSize();
 
             if (m_string.empty())
             {
                 const Vector2f innerSize = m_backgroundComponent->getClientSize();
+
+                // NOLINTNEXTLINE(bugprone-parent-virtual-call)
                 Widget::setSize({m_imageComponent->getSize().x + (innerSize.y - m_imageComponent->getSize().y) + borders.getLeft() + borders.getRight(),
                                  getSize().y});
             }
             else
             {
-                const float distanceBetweenTextAndImage = m_textComponent->getLineHeight() / 5.f;
+                const float distanceBetweenTextAndImage = std::round(m_textComponent->getLineHeight() / 5.f);
                 const float spaceAroundImageAndText = m_textComponent->getLineHeight();
+
+                // NOLINTNEXTLINE(bugprone-parent-virtual-call)
                 Widget::setSize({m_imageComponent->getSize().x + distanceBetweenTextAndImage + m_textComponent->getSize().x
                                 + spaceAroundImageAndText + borders.getLeft() + borders.getRight(), getSize().y});
             }
@@ -274,7 +254,7 @@ namespace tgui
             recalculateGlyphSize();
         }
 
-        updateComponentPositions();
+        updateTextPosition();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -301,29 +281,39 @@ namespace tgui
         m_stylePropertiesNames.emplace(m_type + U".Icon", &icon);
         m_namedComponents.emplace("Icon", m_imageComponent);
 
-        m_textStyleChangedCallbackId = text.style.connectCallback([this]{
-            updateComponentPositions();
-        });
-
         m_backgroundComponent->addComponent(m_imageComponent);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void BitmapButton::updateComponentPositions()
+    void BitmapButton::updateTextPosition()
     {
         if (!m_imageComponent->isVisible())
-            return;
+            return Button::updateTextPosition();
 
         const Vector2f innerSize = m_backgroundComponent->getClientSize();
         const float distanceBetweenTextAndImage = m_textComponent->getLineHeight() / 5.f;
-        float contentsWidth = m_imageComponent->getSize().x;
+        Vector2f contentSize = m_imageComponent->getSize();
         if (!m_string.empty())
-            contentsWidth += distanceBetweenTextAndImage + m_textComponent->getSize().x;
+        {
+            contentSize.x += distanceBetweenTextAndImage + m_textComponent->getSize().x;
+            contentSize.y = std::max(contentSize.y, m_textComponent->getSize().y);
+        }
 
-        m_imageComponent->setPosition({(innerSize.x - contentsWidth) / 2.f, (innerSize.y - m_imageComponent->getSize().y) / 2.f});
+        m_textPosition.x.updateParentSize(innerSize.x);
+        m_textPosition.y.updateParentSize(innerSize.y);
+
+        m_imageComponent->setPosition({m_textPosition.x.getValue() - m_textOrigin.x * contentSize.x,
+                                       m_textPosition.y.getValue() - m_textOrigin.y * contentSize.y + (contentSize.y - m_imageComponent->getSize().y) / 2.f});
         m_textComponent->setPosition({m_imageComponent->getPosition().x + m_imageComponent->getSize().x + distanceBetweenTextAndImage,
-                                      m_imageComponent->getPosition().y + (m_imageComponent->getSize().y - m_textComponent->getLineHeight()) / 2.f});
+                                      m_textPosition.y.getValue() - m_textOrigin.y * contentSize.y + (contentSize.y - m_textComponent->getSize().y) / 2.f});
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr BitmapButton::clone() const
+    {
+        return std::make_shared<BitmapButton>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

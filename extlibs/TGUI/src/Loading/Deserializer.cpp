@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -26,10 +26,13 @@
 #include <TGUI/Loading/Deserializer.hpp>
 #include <TGUI/Loading/DataIO.hpp>
 #include <TGUI/Renderers/WidgetRenderer.hpp>
-#include <TGUI/Backend.hpp>
-#include <TGUI/BackendFont.hpp>
+#include <TGUI/Backend/Window/Backend.hpp>
+#include <TGUI/Backend/Font/BackendFont.hpp>
 #include <TGUI/Global.hpp>
-#include <cstdint>
+
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cstdint>
+#endif
 
 namespace tgui
 {
@@ -101,19 +104,19 @@ namespace tgui
 
         ObjectConverter deserializeBool(const String& str)
         {
-            if (str.equalIgnoreCase("true") || str.equalIgnoreCase("yes") || str.equalIgnoreCase("on") || str.equalIgnoreCase("1"))
+            if (viewEqualIgnoreCase(str, U"true") || viewEqualIgnoreCase(str, U"yes") || viewEqualIgnoreCase(str, U"on") || viewEqualIgnoreCase(str, U"1"))
                 return {true};
-            else if (str.equalIgnoreCase("false") || str.equalIgnoreCase("no") || str.equalIgnoreCase("off") || str.equalIgnoreCase("0"))
+            else if (viewEqualIgnoreCase(str, U"false") || viewEqualIgnoreCase(str, U"no") || viewEqualIgnoreCase(str, U"off") || viewEqualIgnoreCase(str, U"0"))
                 return {false};
             else
-                throw Exception{"Failed to deserialize boolean from '" + str + "'"};
+                throw Exception{U"Failed to deserialize boolean from '" + str + U"'"};
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         ObjectConverter deserializeFont(const String& value)
         {
-            if (value.equalIgnoreCase("null") || value.equalIgnoreCase("nullptr"))
+            if (viewEqualIgnoreCase(value, U"null") || viewEqualIgnoreCase(value, U"nullptr"))
                 return Font{};
 
             String filename = Deserializer::deserialize(ObjectConverter::Type::String, value).getString();
@@ -129,12 +132,12 @@ namespace tgui
 #endif
             {
                 if (!font->loadFromFile((getResourcePath() / filename).asString()))
-                    throw Exception{"Failed to load font from '" + (getResourcePath() / filename).asString() + "'"};
+                    throw Exception{U"Failed to load font from '" + (getResourcePath() / filename).asString() + U"'"};
             }
             else
             {
                 if (!font->loadFromFile(filename))
-                    throw Exception{"Failed to load font from '" + filename + "'"};
+                    throw Exception{U"Failed to load font from '" + filename + U"'"};
             }
 
             // We create the backend font manually first, as passing the string to the Font constructor would cause
@@ -147,27 +150,20 @@ namespace tgui
         ObjectConverter deserializeColor(const String& value)
         {
             String str = value.trim().toLower();
-            if (str.empty() || (str == "none"))
+            if (str.empty() || (str == U"none"))
                 return Color();
 
-            // Check if the color is represented by a string with its name
-            for (const auto& pair : Color::colorNamesMap)
-            {
-                if (str == pair.first)
-                    return pair.second;
-            }
-
-            // The color can be represented with a hexadecimal number
+            // Check if the color can be represented with a hexadecimal number
             if (str[0] == '#')
             {
                 if ((str.length() != 4) && (str.length() != 5) && (str.length() != 7) && (str.length() != 9))
-                    throw Exception{"Failed to deserialize color '" + value + "'. Value started but '#' but has the wrong length."};
+                    throw Exception{U"Failed to deserialize color '" + value + U"'. Value started but '#' but has the wrong length."};
 
                 // You can only have hex characters
                 for (std::size_t i = 1; i < str.length(); ++i)
                 {
                     if (!((str[i] >= '0' && str[i] <= '9') || (str[i] >= 'a' && str[i] <= 'f')))
-                        throw Exception{"Failed to deserialize color '" + str + "'. Value started but '#' but contained an invalid character afterwards."};
+                        throw Exception{U"Failed to deserialize color '" + str + U"'. Value started but '#' but contained an invalid character afterwards."};
                 }
 
                 // Parse the different types of strings (#123, #1234, #112233 and #11223344)
@@ -198,11 +194,20 @@ namespace tgui
                                  static_cast<std::uint8_t>(hexToDec(str[7]) * 16 + hexToDec(str[8]))};
                 }
             }
+            else // Color doesn't start with '#'
+            {
+                // Check if the color is represented by a string with its name
+                for (const auto& pair : Color::colorNamesMap)
+                {
+                    if (str == pair.first)
+                        return pair.second;
+                }
+            }
 
             // The string can optionally start with "rgb" or "rgba", but this is ignored
-            if (str.substr(0, 4) == "rgba")
+            if (str.substr(0, 4) == U"rgba")
                 str.erase(0, 4);
-            else if (str.substr(0, 3) == "rgb")
+            else if (str.substr(0, 3) == U"rgb")
                 str.erase(0, 3);
 
             // Remove the first and last characters when they are brackets
@@ -218,7 +223,7 @@ namespace tgui
                              static_cast<std::uint8_t>((tokens.size() == 4) ? tokens[3].toInt() : 255)};
             }
 
-            throw Exception{"Failed to deserialize color '" + value + "'."};
+            throw Exception{U"Failed to deserialize color '" + value + U"'."};
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -265,7 +270,7 @@ namespace tgui
             String str = value.trim();
 
             if (str.empty())
-                throw Exception{"Failed to deserialize outline '" + value + "'. String was empty."};
+                throw Exception{U"Failed to deserialize outline '" + value + U"'. String was empty."};
 
             // Remove the brackets around the value
             if (((str.front() == '(') && (str.back() == ')')) || ((str.front() == '{') && (str.back() == '}')))
@@ -282,104 +287,123 @@ namespace tgui
             else if (tokens.size() == 4)
                 return {Outline{tokens[0], tokens[1], tokens[2], tokens[3]}};
             else
-                throw Exception{"Failed to deserialize outline '" + value + "'. Expected numbers separated with a comma."};
+                throw Exception{U"Failed to deserialize outline '" + value + U"'. Expected numbers separated with a comma."};
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         ObjectConverter deserializeTexture(const String& value)
         {
-            if (value.empty() || value.equalIgnoreCase("none"))
+            if (value.empty() || viewEqualIgnoreCase(value, U"none"))
                 return Texture{};
+
+            String filename;
+            UIntRect partRect;
+            UIntRect middleRect;
+            bool smooth = Texture::getDefaultSmooth();
 
             // If there are no quotes then the value just contains a filename
             if (value[0] != '"')
-                return Texture{value};
-
-            String::const_iterator c = value.begin();
-            ++c; // Skip the opening quote
-
-            String filename;
-            char32_t prev = U'\0';
-
-            // Look for the end quote
-            bool filenameFound = false;
-            while (c != value.end())
+                filename = value;
+            else
             {
-                if ((*c != U'"') || (prev == U'\\'))
+                String::const_iterator c = value.begin();
+                ++c; // Skip the opening quote
+
+                // Look for the end quote
+                char32_t prev = U'\0';
+                bool filenameFound = false;
+                while (c != value.end())
                 {
-                    prev = *c;
-                    filename.push_back(*c);
-                    ++c;
+                    if ((*c != U'"') || (prev == U'\\'))
+                    {
+                        prev = *c;
+                        filename.push_back(*c);
+                        ++c;
+                    }
+                    else
+                    {
+                        ++c;
+                        filenameFound = true;
+                        break;
+                    }
                 }
-                else
+
+                if (!filenameFound)
+                    throw Exception{U"Failed to deserialize texture '" + value + U"'. Failed to find the closing quote of the filename."};
+
+                // There may be optional parameters
+                while (removeWhitespace(value, c))
                 {
-                    ++c;
-                    filenameFound = true;
-                    break;
+                    const auto startOffset = static_cast<std::size_t>(c - value.begin());
+
+                    String word;
+                    auto openingBracketPos = value.find(U'(', startOffset);
+                    if (openingBracketPos != String::npos)
+                        word = value.substr(startOffset, openingBracketPos - startOffset);
+                    else
+                    {
+                        const String& smoothParam = value.substr(startOffset).trim();
+                        if (viewEqualIgnoreCase(smoothParam, U"smooth"))
+                        {
+                            smooth = true;
+                            break;
+                        }
+                        else if (viewEqualIgnoreCase(smoothParam, U"nosmooth"))
+                        {
+                            smooth = false;
+                            break;
+                        }
+                        else
+                            throw Exception{U"Failed to deserialize texture '" + value + U"'. Invalid text found behind filename."};
+                    }
+
+                    if (word.empty())
+                        throw Exception{U"Failed to deserialize texture '" + value + U"'. Expected 'Part' or 'Middle' in front of opening bracket."};
+
+                    bool rectRequiresFourValues = true;
+                    UIntRect* rect = nullptr;
+                    if (viewEqualIgnoreCase(word, U"part"))
+                    {
+                        rect = &partRect;
+                        std::advance(c, 4);
+                    }
+                    else if (viewEqualIgnoreCase(word, U"middle"))
+                    {
+                        rectRequiresFourValues = false;
+                        rect = &middleRect;
+                        std::advance(c, 6);
+                    }
+                    else
+                        throw Exception{U"Failed to deserialize texture '" + value + U"'. Unexpected word '" + word + U"' in front of opening bracket. Expected 'Part' or 'Middle'."};
+
+                    const auto endOffset = static_cast<std::size_t>(c - value.begin());
+                    auto closeBracketPos = value.find(U')', endOffset);
+                    if (closeBracketPos != String::npos)
+                    {
+                        if (!readUIntRect(value.substr(endOffset, closeBracketPos - endOffset + 1), *rect, rectRequiresFourValues))
+                            throw Exception{U"Failed to parse " + word + U" rectangle while deserializing texture '" + value + U"'."};
+                    }
+                    else
+                        throw Exception{U"Failed to deserialize texture '" + value + U"'. Failed to find closing bracket for " + word + U" rectangle."};
+
+                    std::advance(c, static_cast<std::ptrdiff_t>(closeBracketPos - endOffset + 1));
                 }
             }
 
-            if (!filenameFound)
-                throw Exception{"Failed to deserialize texture '" + value + "'. Failed to find the closing quote of the filename."};
-
-            // There may be optional parameters
-            UIntRect partRect;
-            UIntRect middleRect;
-            bool smooth = true;
-
-            while (removeWhitespace(value, c))
+            // Check if the texture is provided as a base64-encoded string
+            if (filename.starts_with(U"data:"))
             {
-                String word;
-                auto openingBracketPos = value.find(U'(', c - value.begin());
-                if (openingBracketPos != String::npos)
-                    word = value.substr(c - value.begin(), openingBracketPos - (c - value.begin()));
-                else
-                {
-                    const String& smoothParam = value.substr(c - value.begin()).trim();
-                    if (smoothParam.equalIgnoreCase("smooth"))
-                    {
-                        smooth = true;
-                        break;
-                    }
-                    else if (smoothParam.equalIgnoreCase("nosmooth"))
-                    {
-                        smooth = false;
-                        break;
-                    }
-                    else
-                        throw Exception{"Failed to deserialize texture '" + value + "'. Invalid text found behind filename."};
-                }
+                const auto foundIndex = filename.find(U";base64,");
+                if (foundIndex == String::npos)
+                    throw Exception{U"Failed to deserialize texture '" + value + U"'. Filename started with 'data:' but wasn't in format 'data:image/TYPE;base64,DATA'."};
 
-                if (word.empty())
-                    throw Exception{"Failed to deserialize texture '" + value + "'. Expected 'Part' or 'Middle' in front of opening bracket."};
+                const auto dataIndex = foundIndex + 8;
+                const std::string& encodedData = filename.toStdString();
 
-                bool rectRequiresFourValues = true;
-                UIntRect* rect = nullptr;
-                if (word.equalIgnoreCase("part"))
-                {
-                    rect = &partRect;
-                    std::advance(c, 4);
-                }
-                else if (word.equalIgnoreCase("middle"))
-                {
-                    rectRequiresFourValues = false;
-                    rect = &middleRect;
-                    std::advance(c, 6);
-                }
-                else
-                    throw Exception{"Failed to deserialize texture '" + value + "'. Unexpected word '" + word + "' in front of opening bracket. Expected 'Part' or 'Middle'."};
-
-                auto closeBracketPos = value.find(U')', c - value.begin());
-                if (closeBracketPos != String::npos)
-                {
-                    if (!readUIntRect(value.substr(c - value.begin(), closeBracketPos - (c - value.begin()) + 1), *rect, rectRequiresFourValues))
-                        throw Exception{"Failed to parse " + word + " rectangle while deserializing texture '" + value + "'."};
-                }
-                else
-                    throw Exception{"Failed to deserialize texture '" + value + "'. Failed to find closing bracket for " + word + " rectangle."};
-
-                std::advance(c, closeBracketPos - (c - value.begin()) + 1);
+                Texture texture;
+                texture.loadFromBase64(CharStringView(encodedData.data() + dataIndex, encodedData.length() - dataIndex), partRect, middleRect, smooth);
+                return texture;
             }
 
             return Texture{filename, partRect, middleRect, smooth};
@@ -393,13 +417,13 @@ namespace tgui
             std::vector<String> styles = Deserializer::split(style, '|');
             for (const auto& elem : styles)
             {
-                if (elem.equalIgnoreCase("bold"))
+                if (viewEqualIgnoreCase(elem, U"bold"))
                     decodedStyle |= TextStyle::Bold;
-                else if (elem.equalIgnoreCase("italic"))
+                else if (viewEqualIgnoreCase(elem, U"italic"))
                     decodedStyle |= TextStyle::Italic;
-                else if (elem.equalIgnoreCase("underlined"))
+                else if (viewEqualIgnoreCase(elem, U"underlined"))
                     decodedStyle |= TextStyle::Underlined;
-                else if (elem.equalIgnoreCase("strikethrough"))
+                else if (viewEqualIgnoreCase(elem, U"strikethrough"))
                     decodedStyle |= TextStyle::StrikeThrough;
             }
 

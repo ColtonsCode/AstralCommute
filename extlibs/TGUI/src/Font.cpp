@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -24,8 +24,8 @@
 
 
 #include <TGUI/Font.hpp>
-#include <TGUI/Backend.hpp>
-#include <TGUI/BackendFont.hpp>
+#include <TGUI/Backend/Window/Backend.hpp>
+#include <TGUI/Backend/Font/BackendFont.hpp>
 #include <TGUI/Loading/Deserializer.hpp>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -48,7 +48,7 @@ namespace tgui
 
     Font Font::getGlobalFont()
     {
-        if (!globalFont)
+        if (!globalFont && isBackendSet())
             globalFont = getBackend()->createDefaultFont();
 
         return globalFont;
@@ -56,7 +56,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Font::Font(std::nullptr_t)
+    Font::Font(std::nullptr_t) noexcept
     {
     }
 
@@ -84,9 +84,9 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Font::Font(std::shared_ptr<BackendFontBase> backendFont, const String& id) :
-        m_backendFont(backendFont),
-        m_id(id)
+    Font::Font(std::shared_ptr<BackendFont> backendFont, String id) :
+        m_backendFont(std::move(backendFont)),
+        m_id(std::move(id))
     {
     }
 
@@ -136,8 +136,13 @@ namespace tgui
 
     FontGlyph Font::getGlyph(char32_t codePoint, unsigned int characterSize, bool bold, float outlineThickness) const
     {
-        TGUI_ASSERT(m_backendFont != nullptr, "Font::getGlyph called on font that wasn't initialized");
-        return m_backendFont->getGlyph(codePoint, characterSize, bold, outlineThickness);
+        if (m_backendFont != nullptr)
+            return m_backendFont->getGlyph(codePoint, characterSize, bold, outlineThickness);
+        else
+        {
+            TGUI_PRINT_WARNING("Font::getGlyph called on font that wasn't initialized");
+            return {};
+        }
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -162,7 +167,35 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    std::shared_ptr<BackendFontBase> Font::getBackendFont() const
+    float Font::getFontHeight(unsigned int characterSize) const
+    {
+        if (m_backendFont)
+            return m_backendFont->getFontHeight(characterSize);
+        else
+            return 0;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void Font::setSmooth(bool smooth)
+    {
+        if (m_backendFont)
+            m_backendFont->setSmooth(smooth);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    bool Font::isSmooth() const
+    {
+        if (m_backendFont)
+            return m_backendFont->isSmooth();
+        else
+            return true;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    std::shared_ptr<BackendFont> Font::getBackendFont() const
     {
         return m_backendFont;
     }

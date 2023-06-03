@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,19 +25,30 @@
 
 #include <TGUI/Widgets/ListView.hpp>
 #include <TGUI/Keyboard.hpp>
-#include <cmath>
+#include <TGUI/Backend/Window/BackendGui.hpp>
+
+#include <cassert>
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cmath>
+#endif
+
+#if TGUI_HAS_WINDOW_BACKEND_SFML
+    #include <SFML/Config.hpp>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char ListView::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     ListView::ListView(const char* typeName, bool initRenderer) :
         Widget{typeName, false}
     {
-        m_draggableWidget = true;
-
         m_horizontalScrollbar->setSize(m_horizontalScrollbar->getSize().y, m_horizontalScrollbar->getSize().x);
 
         if (initRenderer)
@@ -46,7 +57,7 @@ namespace tgui
             setRenderer(Theme::getDefault()->getRendererNoThrow(m_type));
 
             setTextSize(getGlobalTextSize());
-            setItemHeight(static_cast<unsigned int>(Text::getLineHeight(m_fontCached, m_textSize) * 1.25f));
+            setItemHeight(static_cast<unsigned int>(std::round(Text::getLineHeight(m_fontCached, m_textSizeCached) * 1.25f)));
             setSize({m_itemHeight * 12,
                      getHeaderHeight() + getHeaderSeparatorHeight() + (m_itemHeight * 6)
                      + m_paddingCached.getTop() + m_paddingCached.getBottom() + m_bordersCached.getTop() + m_bordersCached.getBottom()});
@@ -62,7 +73,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    ListView::Ptr ListView::copy(ListView::ConstPtr listView)
+    ListView::Ptr ListView::copy(const ListView::ConstPtr& listView)
     {
         if (listView)
             return std::static_pointer_cast<ListView>(listView->clone());
@@ -93,13 +104,6 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    const ListViewRenderer* ListView::getRenderer() const
-    {
-        return aurora::downcast<const ListViewRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     void ListView::setSize(const Layout2d& size)
     {
         Widget::setSize(size);
@@ -111,7 +115,7 @@ namespace tgui
         m_horizontalScrollbar->setPosition(m_bordersCached.getLeft(), getSize().y - m_bordersCached.getBottom() - m_horizontalScrollbar->getSize().y);
         updateScrollbars();
 
-        setPosition(m_position);
+        m_spriteBackground.setSize(getInnerSize());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -122,7 +126,7 @@ namespace tgui
         column.text = createHeaderText(text);
         column.alignment = alignment;
         column.designWidth = width;
-        if (width)
+        if (width != 0)
             column.width = width;
         else
             column.width = calculateAutoColumnWidth(column.text);
@@ -131,6 +135,8 @@ namespace tgui
 
         updateLastColumnMaxItemWidth();
         updateHorizontalScrollbarMaximum();
+
+        m_resizingColumn = 0;
 
         return m_columns.size()-1;
     }
@@ -176,7 +182,7 @@ namespace tgui
         }
 
         m_columns[index].designWidth = width;
-        if (width)
+        if (width != 0)
             m_columns[index].width = width;
         else
             m_columns[index].width = calculateAutoColumnWidth(m_columns[index].text);
@@ -205,6 +211,8 @@ namespace tgui
 
         updateLastColumnMaxItemWidth();
         updateHorizontalScrollbarMaximum();
+
+        m_resizingColumn = 0;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -229,7 +237,7 @@ namespace tgui
         if (m_requestedHeaderHeight > 0)
             return m_requestedHeaderHeight;
         else
-            return m_itemHeight * 1.25f;
+            return std::round(m_itemHeight * 1.25f);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -331,11 +339,11 @@ namespace tgui
     {
         bool updatedLastColumnMaxItemWidth = false;
 
-        for (unsigned int i = 0; i < items.size(); ++i)
+        for (const auto& itemToInsert : items)
         {
             TGUI_EMPLACE_BACK(item, m_items)
-            item.texts.reserve(items[i].size());
-            for (const auto& text : items[i])
+            item.texts.reserve(itemToInsert.size());
+            for (const auto& text : itemToInsert)
                 item.texts.push_back(createText(text));
 
             item.icon.setOpacity(m_opacityCached);
@@ -362,7 +370,7 @@ namespace tgui
             return;
         }
 
-        auto& item = *m_items.emplace(m_items.begin() + index);
+        auto& item = *m_items.emplace(m_items.begin() + static_cast<std::ptrdiff_t>(index));
         item.texts.push_back(createText(text));
         item.icon.setOpacity(m_opacityCached);
 
@@ -386,7 +394,7 @@ namespace tgui
             return;
         }
 
-        auto& item = *m_items.emplace(m_items.begin() + index);
+        auto& item = *m_items.emplace(m_items.begin() + static_cast<std::ptrdiff_t>(index));
         item.texts.reserve(itemTexts.size());
         for (const auto& text : itemTexts)
             item.texts.push_back(createText(text));
@@ -415,9 +423,9 @@ namespace tgui
 
         bool updatedLastColumnMaxItemWidth = false;
 
-        for (unsigned int i = 0; i < items.size(); ++i)
+        for (std::size_t i = 0; i < items.size(); ++i)
         {
-            auto& item = *m_items.emplace(m_items.begin() + index + i);
+            auto& item = *m_items.emplace(m_items.begin() + static_cast<std::ptrdiff_t>(index + i));
             item.texts.reserve(items[i].size());
             for (const auto& text : items[i])
                 item.texts.push_back(createText(text));
@@ -443,10 +451,10 @@ namespace tgui
         if (index >= m_items.size())
             return false;
 
+        Item& item = m_items[index];
+
         if (m_columns.empty() || m_expandLastColumn)
         {
-            Item& item = m_items[index];
-
             const float oldDesiredWidthInLastColumn = getItemTotalWidth(item, m_columns.empty() ? 0 : m_columns.size() - 1);
 
             item.texts.clear();
@@ -460,12 +468,24 @@ namespace tgui
         }
         else
         {
-            Item& item = m_items[index];
             item.texts.clear();
             item.texts.reserve(itemTexts.size());
             for (const auto& text : itemTexts)
                 item.texts.push_back(createText(text));
         }
+
+        // Update the text color in case the changed item was selected
+        if (m_selectedItems.find(index) != m_selectedItems.end())
+        {
+            if ((static_cast<int>(index) == m_hoveredItem) && m_selectedTextColorHoverCached.isSet())
+                setItemColor(index, m_selectedTextColorHoverCached);
+            else if (m_selectedTextColorCached.isSet())
+                setItemColor(index, m_selectedTextColorCached);
+            else if ((static_cast<int>(index) == m_hoveredItem) && m_textColorHoverCached.isSet())
+                setItemColor(index, m_textColorHoverCached);
+        }
+        else if ((static_cast<int>(index) == m_hoveredItem) && m_textColorHoverCached.isSet())
+            setItemColor(index, m_textColorHoverCached);
 
         return true;
     }
@@ -477,10 +497,10 @@ namespace tgui
         if (index >= m_items.size())
             return false;
 
+        Item& item = m_items[index];
+
         if ((m_columns.empty() || column == m_columns.size() - 1) && (m_columns.empty() || m_expandLastColumn))
         {
-            Item& item = m_items[index];
-
             const float oldDesiredWidthInLastColumn = getItemTotalWidth(item, m_columns.empty() ? 0 : m_columns.size() - 1);
 
             if (column >= item.texts.size())
@@ -494,12 +514,24 @@ namespace tgui
         }
         else
         {
-            Item& item = m_items[index];
             if (column >= item.texts.size())
                 item.texts.resize(column + 1);
 
             item.texts[column] = createText(itemText);
         }
+
+        // Update the text color in case the changed item was selected
+        if (m_selectedItems.find(index) != m_selectedItems.end())
+        {
+            if ((static_cast<int>(index) == m_hoveredItem) && m_selectedTextColorHoverCached.isSet())
+                setItemColor(index, m_selectedTextColorHoverCached);
+            else if (m_selectedTextColorCached.isSet())
+                setItemColor(index, m_selectedTextColorCached);
+            else if ((static_cast<int>(index) == m_hoveredItem) && m_textColorHoverCached.isSet())
+                setItemColor(index, m_textColorHoverCached);
+        }
+        else if ((static_cast<int>(index) == m_hoveredItem) && m_textColorHoverCached.isSet())
+            setItemColor(index, m_textColorHoverCached);
 
         return true;
     }
@@ -573,7 +605,7 @@ namespace tgui
         const float oldDesiredWidthInLastColumn = getItemTotalWidth(m_items[index], m_columns.empty() ? 0 : m_columns.size() - 1);
 
         const bool wasIconSet = m_items[index].icon.isSet();
-        m_items.erase(m_items.begin() + index);
+        m_items.erase(m_items.begin() + static_cast<std::ptrdiff_t>(index));
 
         if (wasIconSet)
         {
@@ -923,17 +955,11 @@ namespace tgui
 
     void ListView::setItemHeight(unsigned int itemHeight)
     {
-        // Set the new heights
         m_itemHeight = itemHeight;
-        if (m_requestedTextSize == 0)
-        {
-            m_textSize = Text::findBestTextSize(m_fontCached, itemHeight * 0.8f);
-            for (auto& item : m_items)
-            {
-                for (auto& text : item.texts)
-                    text.setCharacterSize(m_textSize);
-            }
-        }
+
+        // Update the text size when auto-sizing
+        if ((m_textSize == 0) && !getSharedRenderer()->getTextSize())
+            updateTextSize();
 
         updateVerticalScrollbarMaximum();
     }
@@ -947,30 +973,34 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ListView::setTextSize(unsigned int textSize)
+    void ListView::updateTextSize()
     {
-        m_requestedTextSize = textSize;
-
-        if (textSize)
-            m_textSize = textSize;
-        else
-            m_textSize = Text::findBestTextSize(m_fontCached, m_itemHeight * 0.8f);
+        if ((m_textSize == 0) && !getSharedRenderer()->getTextSize())
+            m_textSizeCached = Text::findBestTextSize(m_fontCached, m_itemHeight * 0.8f);
 
         for (auto& item : m_items)
         {
             for (auto& text : item.texts)
-                text.setCharacterSize(m_textSize);
+                text.setCharacterSize(m_textSizeCached);
         }
 
-        const unsigned int headerTextSize = getHeaderTextSize();
-        for (Column& column : m_columns)
-            column.text.setCharacterSize(headerTextSize);
+        if (!m_headerTextSize)
+        {
+            const unsigned int headerTextSize = getHeaderTextSize();
+            for (Column& column : m_columns)
+            {
+                column.text.setCharacterSize(headerTextSize);
+
+                if (column.designWidth == 0)
+                    column.width = calculateAutoColumnWidth(column.text);
+            }
+        }
 
         const bool updatedLastColumnMaxItemWidth = updateLastColumnMaxItemWidth();
         if (updatedLastColumnMaxItemWidth)
             updateHorizontalScrollbarMaximum();
 
-        m_horizontalScrollbar->setScrollAmount(m_textSize);
+        m_horizontalScrollbar->setScrollAmount(m_textSizeCached);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -998,7 +1028,7 @@ namespace tgui
         if (m_headerTextSize)
             return m_headerTextSize;
         else
-            return m_textSize;
+            return m_textSizeCached;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1247,6 +1277,21 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    void ListView::setResizableColumns(bool resizable)
+    {
+        m_resizableColumns = resizable;
+        m_resizingColumn = 0;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    bool ListView::getResizableColumns() const
+    {
+        return m_resizableColumns;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     bool ListView::isMouseOnWidget(Vector2f pos) const
     {
         return FloatRect{getPosition().x, getPosition().y, getSize().x, getSize().y}.contains(pos);
@@ -1254,35 +1299,43 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ListView::leftMousePressed(Vector2f pos)
+    bool ListView::leftMousePressed(Vector2f pos)
     {
         Widget::leftMousePressed(pos);
 
         pos -= getPosition();
 
+        bool isDragging = false;
         if (m_verticalScrollbar->isMouseOnWidget(pos))
         {
-            m_verticalScrollbar->leftMousePressed(pos);
+            isDragging = m_verticalScrollbar->leftMousePressed(pos);
         }
         else if (m_horizontalScrollbar->isShown() && m_horizontalScrollbar->isMouseOnWidget(pos))
         {
-            m_horizontalScrollbar->leftMousePressed(pos);
+            isDragging = m_horizontalScrollbar->leftMousePressed(pos);
         }
-
+        // Check if a border between two columns was clicked
+        else if (m_resizableColumns && findBorderBelowMouse(pos, m_resizingColumn, m_resizingColumnPixelOffset))
+        {
+            updateHoveredItem(-1);
+        }
         // Check if an item was clicked
         else if (FloatRect{m_bordersCached.getLeft() + m_paddingCached.getLeft(), m_bordersCached.getTop() + m_paddingCached.getTop() + getCurrentHeaderHeight(),
                            getInnerSize().x - m_paddingCached.getLeft() - m_paddingCached.getRight(), getInnerSize().y - m_paddingCached.getTop() - m_paddingCached.getBottom()}.contains(pos))
         {
             updateHoveredItemByMousePos(pos);
 
-            const bool mouseOnSelectedItem = (m_selectedItems.find(m_hoveredItem) != m_selectedItems.end());
+            const bool mouseOnSelectedItem = (m_hoveredItem >= 0) && (m_selectedItems.find(static_cast<std::size_t>(m_hoveredItem)) != m_selectedItems.end());
             if (!mouseOnSelectedItem)
                 m_possibleDoubleClick = false;
 
             if (m_multiSelect && keyboard::isMultiselectModifierPressed())
             {
                 if (mouseOnSelectedItem)
-                    removeSelectedItem(m_hoveredItem);
+                {
+                    assert(m_hoveredItem >= 0); // Otherwise mouseOnSelectedItem should be false
+                    removeSelectedItem(static_cast<std::size_t>(m_hoveredItem));
+                }
                 else
                     addSelectedItem(m_hoveredItem);
             }
@@ -1307,7 +1360,6 @@ namespace tgui
                 m_possibleDoubleClick = true;
             }
         }
-
         // Check if the header was clicked
         else if ((getCurrentHeaderHeight() > 0)
               && FloatRect{m_bordersCached.getLeft() + m_paddingCached.getLeft(), m_bordersCached.getTop() + m_paddingCached.getTop(),
@@ -1315,6 +1367,8 @@ namespace tgui
         {
             m_mouseOnHeaderIndex = getColumnIndexBelowMouse(pos.x);
         }
+
+        return isDragging;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1374,8 +1428,46 @@ namespace tgui
         const int oldHoveredItem = m_hoveredItem;
         updateHoveredItem(-1);
 
+        bool mouseOnResizableBorder = false;
+
+        // Check if we are currently resizing one of the columns
+        if (m_resizingColumn > 0)
+        {
+            assert(m_resizableColumns && m_mouseDown);
+            assert(m_resizingColumn <= m_columns.size());
+
+            const unsigned int separatorWidth = getTotalSeparatorWidth();
+            float borderCenterX = m_bordersCached.getLeft() + m_paddingCached.getLeft() - m_horizontalScrollbar->getValue();
+            for (std::size_t i = 0; i < m_resizingColumn; ++i)
+                borderCenterX += m_columns[i].width + separatorWidth;
+            borderCenterX -= separatorWidth / 2.f;
+
+            const float sizeDiff = pos.x - borderCenterX - m_resizingColumnPixelOffset;
+            float newWidth = std::round(m_columns[m_resizingColumn-1].width + sizeDiff);
+
+            // Don't allow columns that are so small that we can't tell on which border the mouse is standing anymore.
+            // If we allow 1 pixel columns then findBorderBelowMouse should be improved to not pick the first border it finds
+            // but also check other borders and see which one is closest to the mouse.
+            if (newWidth < 5)
+                newWidth = 5;
+
+            m_columns[m_resizingColumn-1].width = newWidth;
+            mouseOnResizableBorder = true;
+
+            const auto oldScrollbarValue = m_horizontalScrollbar->getValue();
+            updateHorizontalScrollbarMaximum();
+
+            // When shrinking a column while the scrollbar is at the maximum value, the scrollbar value and maximum change while the column is resized.
+            // In this case, the column shrinks from the left side while the right side stays stationary. This causes the mouse to no longer be on the border.
+            // If we ignore this (which Windows explorer seems to do) then for every pixel the mouse moves, the faster the column starts shrinking.
+            // In Windows explorer this is a smaller issue because columns have a high minimum width, but for TGUI this causes the resized column to
+            // very quickly end up only having a width of a few pixels. To counter this, we remember the shifted offset. The downside is that the mouse cursor
+            // start drifting away from the border which it is resizing, but the advantage is that the column resizes linearly with the mouse movement.
+            if (m_horizontalScrollbar->getValue() != oldScrollbarValue)
+                m_resizingColumnPixelOffset += (static_cast<float>(m_horizontalScrollbar->getValue()) - static_cast<float>(oldScrollbarValue));
+        }
         // Check if the mouse event should go to the scrollbar
-        if ((m_verticalScrollbar->isMouseDown() && m_verticalScrollbar->isMouseDownOnThumb()) || m_verticalScrollbar->isMouseOnWidget(pos))
+        else if ((m_verticalScrollbar->isMouseDown() && m_verticalScrollbar->isMouseDownOnThumb()) || m_verticalScrollbar->isMouseOnWidget(pos))
         {
             m_verticalScrollbar->mouseMoved(pos);
         }
@@ -1388,8 +1480,16 @@ namespace tgui
             m_verticalScrollbar->mouseNoLongerOnWidget();
             m_horizontalScrollbar->mouseNoLongerOnWidget();
 
+            if (m_resizableColumns && !m_mouseDown && !m_verticalScrollbar->isMouseDown() && !m_horizontalScrollbar->isMouseDown())
+            {
+                std::size_t columnIndex;
+                float borderPixelOffset;
+                mouseOnResizableBorder = findBorderBelowMouse(pos, columnIndex, borderPixelOffset);
+            }
+
             // Find out on which item the mouse is hovered
-            if (FloatRect{m_bordersCached.getLeft() + m_paddingCached.getLeft(),
+            if (!mouseOnResizableBorder
+             && FloatRect{m_bordersCached.getLeft() + m_paddingCached.getLeft(),
                           m_bordersCached.getTop() + m_paddingCached.getTop() + getCurrentHeaderHeight(),
                           getInnerSize().x - m_paddingCached.getLeft() - m_paddingCached.getRight(),
                           getInnerSize().y - m_paddingCached.getTop() - m_paddingCached.getBottom()}.contains(pos))
@@ -1400,16 +1500,19 @@ namespace tgui
                     m_possibleDoubleClick = false;
 
                 // If the mouse is held down then select the item below the mouse
-                if ((m_hoveredItem != oldHoveredItem) && m_mouseDown && !m_verticalScrollbar->isMouseDown())
+                if ((m_hoveredItem != oldHoveredItem) && m_mouseDown && !m_verticalScrollbar->isMouseDown() && !m_horizontalScrollbar->isMouseDown())
                 {
-                    const bool mouseOnSelectedItem = (m_selectedItems.find(m_hoveredItem) != m_selectedItems.end());
+                    const bool mouseOnSelectedItem = (m_hoveredItem >= 0) && (m_selectedItems.find(static_cast<std::size_t>(m_hoveredItem)) != m_selectedItems.end());
                     if (m_multiSelect)
                     {
                         if (keyboard::isMultiselectModifierPressed())
                         {
                             // If the control/command key is pressed then toggle the selection of the item below the mouse
                             if (mouseOnSelectedItem)
-                                removeSelectedItem(m_hoveredItem);
+                            {
+                                assert(m_hoveredItem >= 0); // Otherwise mouseOnSelectedItem should be false
+                                removeSelectedItem(static_cast<std::size_t>(m_hoveredItem));
+                            }
                             else
                                 addSelectedItem(m_hoveredItem);
                         }
@@ -1424,29 +1527,37 @@ namespace tgui
                 }
             }
         }
+
+        // Update the mouse cursor
+        const Cursor::Type wantedCursor = mouseOnResizableBorder ? Cursor::Type::SizeHorizontal : m_mouseCursor;
+        if (m_currentListViewMouseCursor != wantedCursor)
+        {
+            m_currentListViewMouseCursor = wantedCursor;
+            if (m_parentGui)
+                m_parentGui->requestMouseCursor(wantedCursor);
+        }
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    bool ListView::mouseWheelScrolled(float delta, Vector2f pos)
+    bool ListView::scrolled(float delta, Vector2f pos, bool touch)
     {
+        bool scrollbarMoved = false;
         if (m_horizontalScrollbar->isShown()
-            && (!m_verticalScrollbar->isShown()
-                || m_horizontalScrollbar->isMouseOnWidget(pos - getPosition())
-                || keyboard::isShiftPressed()))
+         && !touch
+         && (!m_verticalScrollbar->isShown() || m_horizontalScrollbar->isMouseOnWidget(pos - getPosition()) || keyboard::isShiftPressed()))
         {
-            m_horizontalScrollbar->mouseWheelScrolled(delta, pos - getPosition());
-            mouseMoved(pos); // Update on which item the mouse is hovered
-            return true;
+            scrollbarMoved = m_horizontalScrollbar->scrolled(delta, pos - getPosition(), touch);
         }
         else if (m_verticalScrollbar->isShown())
         {
-            m_verticalScrollbar->mouseWheelScrolled(delta, pos - getPosition());
-            mouseMoved(pos); // Update on which item the mouse is hovered
-            return true;
+            scrollbarMoved = m_verticalScrollbar->scrolled(delta, pos - getPosition(), touch);
         }
 
-        return false;
+        if (scrollbarMoved)
+            mouseMoved(pos); // Update on which item the mouse is hovered
+
+        return scrollbarMoved;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1470,6 +1581,7 @@ namespace tgui
         m_verticalScrollbar->leftMouseButtonNoLongerDown();
         m_horizontalScrollbar->leftMouseButtonNoLongerDown();
         m_mouseOnHeaderIndex = -1;
+        m_resizingColumn = 0;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1496,7 +1608,7 @@ namespace tgui
         }
         else if (event.code == Event::KeyboardKey::Down && (m_focusedItemIndex + 1 < static_cast<int>(m_items.size())))
         {
-            const auto indexBelow = static_cast<std::size_t>(m_focusedItemIndex + 1);
+            const std::size_t indexBelow = (m_focusedItemIndex >= 0) ? static_cast<std::size_t>(m_focusedItemIndex) + 1 : 0;
             if (m_multiSelect && keyboard::isShiftPressed())
             {
                 selectRangeFromEvent(indexBelow);
@@ -1550,17 +1662,25 @@ namespace tgui
 
     void ListView::rendererChanged(const String& property)
     {
-        if (property == "Borders")
+        if (property == U"Borders")
         {
             m_bordersCached = getSharedRenderer()->getBorders();
             setSize(m_size);
         }
-        else if (property == "Padding")
+        else if (property == U"Padding")
         {
             m_paddingCached = getSharedRenderer()->getPadding();
             setSize(m_size);
         }
-        else if (property == "TextColor")
+        else if (property == U"TextureHeaderBackground")
+        {
+            m_spriteHeaderBackground.setTexture(getSharedRenderer()->getTextureHeaderBackground());
+        }
+        else if (property == U"TextureBackground")
+        {
+            m_spriteBackground.setTexture(getSharedRenderer()->getTextureBackground());
+        }
+        else if (property == U"TextColor")
         {
             m_textColorCached = getSharedRenderer()->getTextColor();
             updateItemColors();
@@ -1568,84 +1688,87 @@ namespace tgui
             if (!m_headerTextColorCached.isSet())
                 updateHeaderTextsColor();
         }
-        else if (property == "TextColorHover")
+        else if (property == U"TextColorHover")
         {
             m_textColorHoverCached = getSharedRenderer()->getTextColorHover();
             updateItemColors();
         }
-        else if (property == "SelectedTextColor")
+        else if (property == U"SelectedTextColor")
         {
             m_selectedTextColorCached = getSharedRenderer()->getSelectedTextColor();
             updateItemColors();
         }
-        else if (property == "SelectedTextColorHover")
+        else if (property == U"SelectedTextColorHover")
         {
             m_selectedTextColorHoverCached = getSharedRenderer()->getSelectedTextColorHover();
             updateItemColors();
         }
-        else if (property == "Scrollbar")
+        else if (property == U"Scrollbar")
         {
             m_verticalScrollbar->setRenderer(getSharedRenderer()->getScrollbar());
             m_horizontalScrollbar->setRenderer(getSharedRenderer()->getScrollbar());
 
             // If no scrollbar width was set then we may need to use the one from the texture
-            if (!getSharedRenderer()->getScrollbarWidth())
+            if (getSharedRenderer()->getScrollbarWidth() == 0)
             {
                 m_verticalScrollbar->setSize({m_verticalScrollbar->getDefaultWidth(), m_verticalScrollbar->getSize().y});
                 m_horizontalScrollbar->setSize({m_horizontalScrollbar->getSize().x, m_horizontalScrollbar->getDefaultWidth()});
                 setSize(m_size);
             }
         }
-        else if (property == "ScrollbarWidth")
+        else if (property == U"ScrollbarWidth")
         {
-            const float width = getSharedRenderer()->getScrollbarWidth() ? getSharedRenderer()->getScrollbarWidth() : m_verticalScrollbar->getDefaultWidth();
+            const float width = (getSharedRenderer()->getScrollbarWidth() != 0) ? getSharedRenderer()->getScrollbarWidth() : m_verticalScrollbar->getDefaultWidth();
             m_verticalScrollbar->setSize({width, m_verticalScrollbar->getSize().y});
             m_horizontalScrollbar->setSize({m_verticalScrollbar->getSize().x, width});
             setSize(m_size);
         }
-        else if (property == "BorderColor")
+        else if (property == U"BorderColor")
         {
             m_borderColorCached = getSharedRenderer()->getBorderColor();
         }
-        else if (property == "SeparatorColor")
+        else if (property == U"SeparatorColor")
         {
             m_separatorColorCached = getSharedRenderer()->getSeparatorColor();
         }
-        else if (property == "GridLinesColor")
+        else if (property == U"GridLinesColor")
         {
             m_gridLinesColorCached = getSharedRenderer()->getGridLinesColor();
         }
-        else if (property == "HeaderTextColor")
+        else if (property == U"HeaderTextColor")
         {
             m_headerTextColorCached = getSharedRenderer()->getHeaderTextColor();
             updateHeaderTextsColor();
         }
-        else if (property == "HeaderBackgroundColor")
+        else if (property == U"HeaderBackgroundColor")
         {
             m_headerBackgroundColorCached = getSharedRenderer()->getHeaderBackgroundColor();
         }
-        else if (property == "BackgroundColor")
+        else if (property == U"BackgroundColor")
         {
             m_backgroundColorCached = getSharedRenderer()->getBackgroundColor();
         }
-        else if (property == "BackgroundColorHover")
+        else if (property == U"BackgroundColorHover")
         {
             m_backgroundColorHoverCached = getSharedRenderer()->getBackgroundColorHover();
         }
-        else if (property == "SelectedBackgroundColor")
+        else if (property == U"SelectedBackgroundColor")
         {
             m_selectedBackgroundColorCached = getSharedRenderer()->getSelectedBackgroundColor();
         }
-        else if (property == "SelectedBackgroundColorHover")
+        else if (property == U"SelectedBackgroundColorHover")
         {
             m_selectedBackgroundColorHoverCached = getSharedRenderer()->getSelectedBackgroundColorHover();
         }
-        else if ((property == "Opacity") || (property == "OpacityDisabled"))
+        else if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
             Widget::rendererChanged(property);
 
             m_verticalScrollbar->setInheritedOpacity(m_opacityCached);
             m_horizontalScrollbar->setInheritedOpacity(m_opacityCached);
+
+            m_spriteHeaderBackground.setOpacity(m_opacityCached);
+            m_spriteBackground.setOpacity(m_opacityCached);
 
             for (auto& column : m_columns)
                 column.text.setOpacity(m_opacityCached);
@@ -1658,7 +1781,7 @@ namespace tgui
                 item.icon.setOpacity(m_opacityCached);
             }
         }
-        else if (property == "Font")
+        else if (property == U"Font")
         {
             Widget::rendererChanged(property);
 
@@ -1671,30 +1794,21 @@ namespace tgui
                     text.setFont(m_fontCached);
             }
 
-            // Recalculate the text size with the new font
-            if (m_requestedTextSize == 0)
+            if ((m_textSize == 0) && !getSharedRenderer()->getTextSize())
             {
-                m_textSize = Text::findBestTextSize(m_fontCached, m_itemHeight * 0.8f);
-                for (auto& item : m_items)
-                {
-                    for (auto& text : item.texts)
-                        text.setCharacterSize(m_textSize);
-                }
-
-                if (!m_headerTextSize)
-                {
-                    for (auto& column : m_columns)
-                        column.text.setCharacterSize(m_textSize);
-                }
+                // Recalculate the text size with the new font
+                updateTextSize();
             }
-
-            // Recalculate the width of the columns if they depended on the header text
-            for (auto& column : m_columns)
+            else
             {
-                if (column.designWidth == 0)
-                    column.width = calculateAutoColumnWidth(column.text);
+                // Recalculate the width of the columns if they depended on the header text
+                for (auto& column : m_columns)
+                {
+                    if (column.designWidth == 0)
+                        column.width = calculateAutoColumnWidth(column.text);
+                }
+                updateHorizontalScrollbarMaximum();
             }
-            updateHorizontalScrollbarMaximum();
         }
         else
             Widget::rendererChanged(property);
@@ -1711,14 +1825,14 @@ namespace tgui
             auto columnNode = std::make_unique<DataIO::Node>();
             columnNode->name = "Column";
 
-            columnNode->propertyValuePairs["Text"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(column.text.getString()));
-            if (column.designWidth)
-                columnNode->propertyValuePairs["Width"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(column.designWidth));
+            columnNode->propertyValuePairs[U"Text"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(column.text.getString()));
+            if (column.designWidth != 0)
+                columnNode->propertyValuePairs[U"Width"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(column.designWidth));
 
             if (column.alignment == ColumnAlignment::Center)
-                columnNode->propertyValuePairs["Alignment"] = std::make_unique<DataIO::ValueNode>("Center");
+                columnNode->propertyValuePairs[U"Alignment"] = std::make_unique<DataIO::ValueNode>("Center");
             else if (column.alignment == ColumnAlignment::Right)
-                columnNode->propertyValuePairs["Alignment"] = std::make_unique<DataIO::ValueNode>("Right");
+                columnNode->propertyValuePairs[U"Alignment"] = std::make_unique<DataIO::ValueNode>("Right");
 
             node->children.push_back(std::move(columnNode));
         }
@@ -1735,26 +1849,29 @@ namespace tgui
                     textsList += ", " + Serializer::serialize(item.texts[i].getString());
                 textsList += "]";
 
-                itemNode->propertyValuePairs["Texts"] = std::make_unique<DataIO::ValueNode>(textsList);
+                itemNode->propertyValuePairs[U"Texts"] = std::make_unique<DataIO::ValueNode>(textsList);
             }
+
+            if (item.icon.isSet())
+                itemNode->propertyValuePairs[U"Icon"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(item.icon.getTexture()));
 
             node->children.push_back(std::move(itemNode));
         }
 
         if (!m_autoScroll)
-            node->propertyValuePairs["AutoScroll"] = std::make_unique<DataIO::ValueNode>("false");
+            node->propertyValuePairs[U"AutoScroll"] = std::make_unique<DataIO::ValueNode>("false");
 
         if (!m_headerVisible)
-            node->propertyValuePairs["HeaderVisible"] = std::make_unique<DataIO::ValueNode>("false");
+            node->propertyValuePairs[U"HeaderVisible"] = std::make_unique<DataIO::ValueNode>("false");
 
         if (m_headerTextSize)
-            node->propertyValuePairs["HeaderTextSize"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_headerTextSize));
+            node->propertyValuePairs[U"HeaderTextSize"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_headerTextSize));
 
         if (m_multiSelect)
-            node->propertyValuePairs["MultiSelect"] = std::make_unique<DataIO::ValueNode>("true");
+            node->propertyValuePairs[U"MultiSelect"] = std::make_unique<DataIO::ValueNode>("true");
 
         if ((m_fixedIconSize.x != 0) || (m_fixedIconSize.y != 0))
-            node->propertyValuePairs["FixedIconSize"] = std::make_unique<DataIO::ValueNode>("(" + String::fromNumber(m_fixedIconSize.x) + "," + String::fromNumber(m_fixedIconSize.y) + ")");
+            node->propertyValuePairs[U"FixedIconSize"] = std::make_unique<DataIO::ValueNode>("(" + String::fromNumber(m_fixedIconSize.x) + "," + String::fromNumber(m_fixedIconSize.y) + ")");
 
         if (!m_selectedItems.empty())
         {
@@ -1765,38 +1882,38 @@ namespace tgui
 
             iList += "]";
 
-            node->propertyValuePairs["SelectedItemIndices"] = std::make_unique<DataIO::ValueNode>(iList);
+            node->propertyValuePairs[U"SelectedItemIndices"] = std::make_unique<DataIO::ValueNode>(iList);
         }
 
         if (m_gridLinesWidth != 1)
-            node->propertyValuePairs["GridLinesWidth"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_gridLinesWidth));
+            node->propertyValuePairs[U"GridLinesWidth"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_gridLinesWidth));
 
         if (m_showHorizontalGridLines)
-            node->propertyValuePairs["ShowHorizontalGridLines"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_showHorizontalGridLines));
+            node->propertyValuePairs[U"ShowHorizontalGridLines"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_showHorizontalGridLines));
 
         if (m_verticalScrollbarPolicy != Scrollbar::Policy::Automatic)
         {
             if (m_verticalScrollbarPolicy == Scrollbar::Policy::Always)
-                node->propertyValuePairs["VerticalScrollbarPolicy"] = std::make_unique<DataIO::ValueNode>("Always");
+                node->propertyValuePairs[U"VerticalScrollbarPolicy"] = std::make_unique<DataIO::ValueNode>("Always");
             else if (m_verticalScrollbarPolicy == Scrollbar::Policy::Never)
-                node->propertyValuePairs["VerticalScrollbarPolicy"] = std::make_unique<DataIO::ValueNode>("Never");
+                node->propertyValuePairs[U"VerticalScrollbarPolicy"] = std::make_unique<DataIO::ValueNode>("Never");
         }
         if (m_horizontalScrollbarPolicy != Scrollbar::Policy::Automatic)
         {
             if (m_horizontalScrollbarPolicy == Scrollbar::Policy::Always)
-                node->propertyValuePairs["HorizontalScrollbarPolicy"] = std::make_unique<DataIO::ValueNode>("Always");
+                node->propertyValuePairs[U"HorizontalScrollbarPolicy"] = std::make_unique<DataIO::ValueNode>("Always");
             else if (m_horizontalScrollbarPolicy == Scrollbar::Policy::Never)
-                node->propertyValuePairs["HorizontalScrollbarPolicy"] = std::make_unique<DataIO::ValueNode>("Never");
+                node->propertyValuePairs[U"HorizontalScrollbarPolicy"] = std::make_unique<DataIO::ValueNode>("Never");
         }
 
-        node->propertyValuePairs["HeaderVisible"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_headerVisible));
-        node->propertyValuePairs["HeaderHeight"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_requestedHeaderHeight));
-        node->propertyValuePairs["SeparatorWidth"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_separatorWidth));
-        node->propertyValuePairs["HeaderSeparatorHeight"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_headerSeparatorHeight));
-        node->propertyValuePairs["TextSize"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_textSize));
-        node->propertyValuePairs["ItemHeight"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_itemHeight));
-        node->propertyValuePairs["ShowVerticalGridLines"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_showVerticalGridLines));
-        node->propertyValuePairs["ExpandLastColumn"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_expandLastColumn));
+        node->propertyValuePairs[U"ResizableColumns"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_resizableColumns));
+        node->propertyValuePairs[U"HeaderVisible"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_headerVisible));
+        node->propertyValuePairs[U"HeaderHeight"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_requestedHeaderHeight));
+        node->propertyValuePairs[U"SeparatorWidth"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_separatorWidth));
+        node->propertyValuePairs[U"HeaderSeparatorHeight"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_headerSeparatorHeight));
+        node->propertyValuePairs[U"ItemHeight"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_itemHeight));
+        node->propertyValuePairs[U"ShowVerticalGridLines"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_showVerticalGridLines));
+        node->propertyValuePairs[U"ExpandLastColumn"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_expandLastColumn));
 
         return node;
     }
@@ -1809,27 +1926,27 @@ namespace tgui
 
         for (const auto& childNode : node->children)
         {
-            if (childNode->name != "Column")
+            if (childNode->name != U"Column")
                 continue;
 
             String text;
             float width = 0;
             ColumnAlignment alignment = ColumnAlignment::Left;
 
-            if (childNode->propertyValuePairs["Text"])
-                text = Deserializer::deserialize(ObjectConverter::Type::String, childNode->propertyValuePairs["Text"]->value).getString();
-            if (childNode->propertyValuePairs["Width"])
-                width = Deserializer::deserialize(ObjectConverter::Type::Number, childNode->propertyValuePairs["Width"]->value).getNumber();
+            if (childNode->propertyValuePairs[U"Text"])
+                text = Deserializer::deserialize(ObjectConverter::Type::String, childNode->propertyValuePairs[U"Text"]->value).getString();
+            if (childNode->propertyValuePairs[U"Width"])
+                width = Deserializer::deserialize(ObjectConverter::Type::Number, childNode->propertyValuePairs[U"Width"]->value).getNumber();
 
-            if (childNode->propertyValuePairs["Alignment"])
+            if (childNode->propertyValuePairs[U"Alignment"])
             {
-                String alignmentString = Deserializer::deserialize(ObjectConverter::Type::String, childNode->propertyValuePairs["Alignment"]->value).getString();
-                if (alignmentString == "Right")
+                String alignmentString = Deserializer::deserialize(ObjectConverter::Type::String, childNode->propertyValuePairs[U"Alignment"]->value).getString();
+                if (alignmentString == U"Right")
                     alignment = ColumnAlignment::Right;
-                else if (alignmentString == "Center")
+                else if (alignmentString == U"Center")
                     alignment = ColumnAlignment::Center;
-                else if (alignmentString != "Left")
-                    throw Exception{"Failed to parse Alignment property, found unknown value '" + alignmentString + "'."};
+                else if (alignmentString != U"Left")
+                    throw Exception{U"Failed to parse Alignment property, found unknown value '" + alignmentString + U"'."};
             }
 
             addColumn(text, width, alignment);
@@ -1837,86 +1954,130 @@ namespace tgui
 
         for (const auto& childNode : node->children)
         {
-            if (childNode->name != "Item")
+            if (childNode->name != U"Item")
                 continue;
 
-            if (!childNode->propertyValuePairs["Texts"])
-                throw Exception{"Failed to parse 'Item' property, no Texts property found"};
-            if (!childNode->propertyValuePairs["Texts"]->listNode)
-                throw Exception{"Failed to parse 'Texts' property inside the 'Item' property, expected a list as value"};
+            if (!childNode->propertyValuePairs[U"Texts"])
+                throw Exception{U"Failed to parse 'Item' property, no Texts property found"};
+            if (!childNode->propertyValuePairs[U"Texts"]->listNode)
+                throw Exception{U"Failed to parse 'Texts' property inside the 'Item' property, expected a list as value"};
 
             std::vector<String> itemRow;
-            itemRow.reserve(childNode->propertyValuePairs["Texts"]->valueList.size());
-            for (const auto& item : childNode->propertyValuePairs["Texts"]->valueList)
+            itemRow.reserve(childNode->propertyValuePairs[U"Texts"]->valueList.size());
+            for (const auto& item : childNode->propertyValuePairs[U"Texts"]->valueList)
                 itemRow.push_back(Deserializer::deserialize(ObjectConverter::Type::String, item).getString());
 
-            addItem(itemRow);
+            const std::size_t index = addItem(itemRow);
+
+            if (childNode->propertyValuePairs[U"Icon"])
+                setItemIcon(index, Deserializer::deserialize(ObjectConverter::Type::Texture, childNode->propertyValuePairs[U"Icon"]->value).getTexture());
         }
 
-        if (node->propertyValuePairs["AutoScroll"])
-            setAutoScroll(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["AutoScroll"]->value).getBool());
-        if (node->propertyValuePairs["HeaderVisible"])
-            setHeaderVisible(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["HeaderVisible"]->value).getBool());
-        if (node->propertyValuePairs["HeaderHeight"])
-            setHeaderHeight(node->propertyValuePairs["HeaderHeight"]->value.toFloat());
-        if (node->propertyValuePairs["HeaderTextSize"])
-            setHeaderTextSize(node->propertyValuePairs["HeaderTextSize"]->value.toInt());
-        if (node->propertyValuePairs["SeparatorWidth"])
-            setSeparatorWidth(node->propertyValuePairs["SeparatorWidth"]->value.toInt());
-        if (node->propertyValuePairs["HeaderSeparatorHeight"])
-            setHeaderSeparatorHeight(node->propertyValuePairs["HeaderSeparatorHeight"]->value.toInt());
-        if (node->propertyValuePairs["TextSize"])
-            setTextSize(node->propertyValuePairs["TextSize"]->value.toInt());
-        if (node->propertyValuePairs["ItemHeight"])
-            setItemHeight(node->propertyValuePairs["ItemHeight"]->value.toInt());
-        if (node->propertyValuePairs["MultiSelect"])
-            setMultiSelect(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["MultiSelect"]->value).getBool());
+        if (node->propertyValuePairs[U"AutoScroll"])
+            setAutoScroll(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"AutoScroll"]->value).getBool());
+        if (node->propertyValuePairs[U"ResizableColumns"])
+            setResizableColumns(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"ResizableColumns"]->value).getBool());
+        if (node->propertyValuePairs[U"HeaderVisible"])
+            setHeaderVisible(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"HeaderVisible"]->value).getBool());
+        if (node->propertyValuePairs[U"HeaderHeight"])
+            setHeaderHeight(node->propertyValuePairs[U"HeaderHeight"]->value.toFloat());
+        if (node->propertyValuePairs[U"HeaderTextSize"])
+            setHeaderTextSize(node->propertyValuePairs[U"HeaderTextSize"]->value.toUInt());
+        if (node->propertyValuePairs[U"SeparatorWidth"])
+            setSeparatorWidth(node->propertyValuePairs[U"SeparatorWidth"]->value.toUInt());
+        if (node->propertyValuePairs[U"HeaderSeparatorHeight"])
+            setHeaderSeparatorHeight(node->propertyValuePairs[U"HeaderSeparatorHeight"]->value.toUInt());
+        if (node->propertyValuePairs[U"ItemHeight"])
+            setItemHeight(node->propertyValuePairs[U"ItemHeight"]->value.toUInt());
+        if (node->propertyValuePairs[U"MultiSelect"])
+            setMultiSelect(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"MultiSelect"]->value).getBool());
 
-        if (node->propertyValuePairs["FixedIconSize"])
-            setFixedIconSize(Vector2f(node->propertyValuePairs["FixedIconSize"]->value));
+        if (node->propertyValuePairs[U"FixedIconSize"])
+            setFixedIconSize(Vector2f(node->propertyValuePairs[U"FixedIconSize"]->value));
 
-        if (node->propertyValuePairs["SelectedItemIndices"])
+        if (node->propertyValuePairs[U"SelectedItemIndices"])
         {
-            if (!node->propertyValuePairs["SelectedItemIndices"]->listNode)
-                throw Exception{"Failed to parse 'SelectedItemIndices' property, expected a list as value"};
+            if (!node->propertyValuePairs[U"SelectedItemIndices"]->listNode)
+                throw Exception{U"Failed to parse 'SelectedItemIndices' property, expected a list as value"};
 
-            for (const auto& item : node->propertyValuePairs["SelectedItemIndices"]->valueList)
+            for (const auto& item : node->propertyValuePairs[U"SelectedItemIndices"]->valueList)
                 addSelectedItem(item.toInt());
         }
-        if (node->propertyValuePairs["GridLinesWidth"])
-            setGridLinesWidth(node->propertyValuePairs["GridLinesWidth"]->value.toInt());
-        if (node->propertyValuePairs["ShowHorizontalGridLines"])
-            setShowHorizontalGridLines(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["ShowHorizontalGridLines"]->value).getBool());
-        if (node->propertyValuePairs["ShowVerticalGridLines"])
-            setShowVerticalGridLines(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["ShowVerticalGridLines"]->value).getBool());
-        if (node->propertyValuePairs["ExpandLastColumn"])
-            setExpandLastColumn(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["ExpandLastColumn"]->value).getBool());
+        if (node->propertyValuePairs[U"GridLinesWidth"])
+            setGridLinesWidth(node->propertyValuePairs[U"GridLinesWidth"]->value.toUInt());
+        if (node->propertyValuePairs[U"ShowHorizontalGridLines"])
+            setShowHorizontalGridLines(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"ShowHorizontalGridLines"]->value).getBool());
+        if (node->propertyValuePairs[U"ShowVerticalGridLines"])
+            setShowVerticalGridLines(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"ShowVerticalGridLines"]->value).getBool());
+        if (node->propertyValuePairs[U"ExpandLastColumn"])
+            setExpandLastColumn(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"ExpandLastColumn"]->value).getBool());
 
-        if (node->propertyValuePairs["VerticalScrollbarPolicy"])
+        if (node->propertyValuePairs[U"VerticalScrollbarPolicy"])
         {
-            String policy = node->propertyValuePairs["VerticalScrollbarPolicy"]->value.trim();
-            if (policy == "Automatic")
+            String policy = node->propertyValuePairs[U"VerticalScrollbarPolicy"]->value.trim();
+            if (policy == U"Automatic")
                 setVerticalScrollbarPolicy(Scrollbar::Policy::Automatic);
-            else if (policy == "Always")
+            else if (policy == U"Always")
                 setVerticalScrollbarPolicy(Scrollbar::Policy::Always);
-            else if (policy == "Never")
+            else if (policy == U"Never")
                 setVerticalScrollbarPolicy(Scrollbar::Policy::Never);
             else
-                throw Exception{"Failed to parse VerticalScrollbarPolicy property, found unknown value '" + policy + "'."};
+                throw Exception{U"Failed to parse VerticalScrollbarPolicy property, found unknown value '" + policy + U"'."};
         }
 
-        if (node->propertyValuePairs["HorizontalScrollbarPolicy"])
+        if (node->propertyValuePairs[U"HorizontalScrollbarPolicy"])
         {
-            String policy = node->propertyValuePairs["HorizontalScrollbarPolicy"]->value.trim();
-            if (policy == "Automatic")
+            String policy = node->propertyValuePairs[U"HorizontalScrollbarPolicy"]->value.trim();
+            if (policy == U"Automatic")
                 setHorizontalScrollbarPolicy(Scrollbar::Policy::Automatic);
-            else if (policy == "Always")
+            else if (policy == U"Always")
                 setHorizontalScrollbarPolicy(Scrollbar::Policy::Always);
-            else if (policy == "Never")
+            else if (policy == U"Never")
                 setHorizontalScrollbarPolicy(Scrollbar::Policy::Never);
             else
-                throw Exception{"Failed to parse HorizontalScrollbarPolicy property, found unknown value '" + policy + "'."};
+                throw Exception{U"Failed to parse HorizontalScrollbarPolicy property, found unknown value '" + policy + U"'."};
         }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void ListView::mouseEnteredWidget()
+    {
+#if TGUI_HAS_WINDOW_BACKEND_SFML && (SFML_VERSION_MAJOR == 2) && (SFML_VERSION_MINOR < 6)
+        if (m_resizableColumns && (m_mouseCursor != Cursor::Type::Arrow))
+        {
+            // Widget::mouseEnteredWidget() can't be called from here because of a bug in SFML < 2.6.
+            // Calling the function from the base class would set the mouse cursor that was requested. If the mouse is on top
+            // of a border between columns then we need to replace it with a resize cursor afterwards. These cursor changes would
+            // occus out of order though, causing the wrong cursor to show up when the mouse enters a border from the outside.
+            m_mouseHover = true;
+            onMouseEnter.emit(this);
+            m_currentListViewMouseCursor = Cursor::Type::Arrow;
+            return;
+        }
+#endif
+
+        Widget::mouseEnteredWidget();
+
+        // If the list view has a custom mouse cursor then the Widget::mouseEnteredWidget() would have switched to it.
+        // We should recheck whether the mouse is on top of the borders to change it back into a resize arrow if needed.
+        // The check would be called after mouseEnteredWidget() anyway, so we just make sure that the code realizes that
+        // the mouse cursor has been changed by resetting the state.
+        m_currentListViewMouseCursor = m_mouseCursor;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void ListView::mouseLeftWidget()
+    {
+        if (m_currentListViewMouseCursor != Cursor::Type::Arrow)
+        {
+            m_currentListViewMouseCursor = Cursor::Type::Arrow;
+            if (m_parentGui)
+                m_parentGui->requestMouseCursor(Cursor::Type::Arrow);
+        }
+
+        Widget::mouseLeftWidget();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1935,7 +2096,7 @@ namespace tgui
         text.setFont(m_fontCached);
         text.setColor(m_textColorCached);
         text.setOpacity(m_opacityCached);
-        text.setCharacterSize(m_textSize);
+        text.setCharacterSize(m_textSizeCached);
         text.setString(caption);
         return text;
     }
@@ -1985,10 +2146,10 @@ namespace tgui
                 setItemColor(selectedItem, m_selectedTextColorCached);
         }
 
-        if ((m_hoveredItem >= 0) && (m_selectedItems.find(m_hoveredItem) == m_selectedItems.end()))
+        if ((m_hoveredItem >= 0) && (m_selectedItems.find(static_cast<std::size_t>(m_hoveredItem)) == m_selectedItems.end()))
         {
             if (m_textColorHoverCached.isSet())
-                setItemColor(m_hoveredItem, m_textColorHoverCached);
+                setItemColor(static_cast<std::size_t>(m_hoveredItem), m_textColorHoverCached);
         }
     }
 
@@ -2024,10 +2185,10 @@ namespace tgui
 
         if (m_hoveredItem >= 0)
         {
-            if ((m_selectedItems.find(m_hoveredItem) != m_selectedItems.end()) && m_selectedTextColorCached.isSet())
-                setItemColor(m_hoveredItem, m_selectedTextColorCached);
+            if ((m_selectedItems.find(static_cast<std::size_t>(m_hoveredItem)) != m_selectedItems.end()) && m_selectedTextColorCached.isSet())
+                setItemColor(static_cast<std::size_t>(m_hoveredItem), m_selectedTextColorCached);
             else
-                setItemColor(m_hoveredItem, m_textColorCached);
+                setItemColor(static_cast<std::size_t>(m_hoveredItem), m_textColorCached);
         }
 
         m_hoveredItem = item;
@@ -2039,7 +2200,7 @@ namespace tgui
 
     void ListView::updateSelectedItem(int item)
     {
-        if (m_selectedItems.empty() && (item == -1))
+        if (m_selectedItems.empty() && (item < 0))
             return;
         if ((m_selectedItems.size() == 1) && (static_cast<int>(*m_selectedItems.begin()) == item))
             return;
@@ -2104,7 +2265,7 @@ namespace tgui
         if (!m_columns.empty() && !m_expandLastColumn)
             return updatedLastColumnMaxItemWidth;
 
-        const float textPadding = Text::getExtraHorizontalOffset(m_fontCached, m_textSize);
+        const float textPadding = Text::getExtraHorizontalOffset(m_fontCached, m_textSizeCached);
         if (m_columns.empty())
         {
             m_maxItemWidth = 0;
@@ -2221,10 +2382,9 @@ namespace tgui
             return;
         }
 
-        if (m_selectedItems.find(item) != m_selectedItems.end())
-            return;
-
         if (item < 0)
+            return;
+        if (m_selectedItems.find(static_cast<std::size_t>(item)) != m_selectedItems.end())
             return;
 
         if ((item == m_hoveredItem) && m_textColorHoverCached.isSet())
@@ -2232,12 +2392,12 @@ namespace tgui
         else
             setItemColor(static_cast<std::size_t>(item), m_textColorCached);
 
-        TGUI_ASSERT(m_selectedItems.empty() == (m_firstSelectedItemIndex == -1), "m_firstSelectedItemIndex should (only) be set if there was a selection");
+        TGUI_ASSERT(m_selectedItems.empty() == (m_firstSelectedItemIndex < 0), "m_firstSelectedItemIndex should (only) be set if there was a selection");
         m_focusedItemIndex = item;
         if (m_selectedItems.empty())
             m_firstSelectedItemIndex = item;
 
-        m_selectedItems.insert(item);
+        m_selectedItems.insert(static_cast<std::size_t>(item));
 
         updateSelectedAndhoveredItemColors();
 
@@ -2306,7 +2466,7 @@ namespace tgui
         if (columnIndex >= item.texts.size())
             return 0;
 
-        const float textPadding = Text::getExtraHorizontalOffset(m_fontCached, m_textSize);
+        const float textPadding = Text::getExtraHorizontalOffset(m_fontCached, m_textSizeCached);
         const float iconWidth = ((m_columns.empty() || m_columns.size() == 1) && columnIndex == 0 && item.icon.isSet()) ? item.icon.getSize().x + textPadding : 0;
         return item.texts[columnIndex].getSize().x + (textPadding * 2) + iconWidth;
     }
@@ -2339,6 +2499,61 @@ namespace tgui
             return static_cast<int>(m_columns.size()) - 1;
 
         return -1;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    bool ListView::findBorderBelowMouse(Vector2f pos, std::size_t& columnIndex, float& pixelOffset) const
+    {
+        // The mouse can't be between two columns when it is on the outline of the list view
+        if (!FloatRect{m_bordersCached.getLeft() + m_paddingCached.getLeft(),
+                       m_bordersCached.getTop() + m_paddingCached.getTop(),
+                       getInnerSize().x - m_paddingCached.getLeft() - m_paddingCached.getRight(),
+                       getInnerSize().y - m_paddingCached.getTop() - m_paddingCached.getBottom()}.contains(pos))
+            return false;
+
+        const float margin = 3; // Mouse does not have to be exactly on the border
+        const float headerHeight = getCurrentHeaderHeight();
+        const bool mouseOnHeader = (pos.y < m_bordersCached.getTop() + m_paddingCached.getTop() + headerHeight);
+
+        // If there are no vertical grid lines then we can't resize when the mouse is below the header
+        if (!mouseOnHeader && (!m_showVerticalGridLines || (m_gridLinesWidth == 0)))
+            return false;
+
+        const unsigned int separatorWidth = mouseOnHeader ? m_separatorWidth : m_gridLinesWidth;
+        const unsigned int totalSeparatorWidth = getTotalSeparatorWidth();
+
+        // Define an area to check the mouse cursor against. The left position of the area is changed later.
+        FloatRect borderArea;
+        if (mouseOnHeader)
+        {
+            borderArea = FloatRect{0, m_bordersCached.getTop() + m_paddingCached.getTop(),
+                                   m_separatorWidth + 2*margin, headerHeight};
+        }
+        else // Mouse is on the items, not on the header
+        {
+            borderArea = FloatRect{0, m_bordersCached.getTop() + m_paddingCached.getTop() + headerHeight,
+                                   m_gridLinesWidth + 2*margin, getInnerSize().y - headerHeight};
+        }
+
+        const std::size_t expandedColumn = m_expandLastColumn ? m_columns.size()-1 : std::numeric_limits<std::size_t>::max();
+        float x = m_bordersCached.getLeft() + m_paddingCached.getLeft() - m_horizontalScrollbar->getValue();
+        for (std::size_t i = 0; i < m_columns.size(); ++i)
+        {
+            x += m_columns[i].width;
+            borderArea.left = x + (totalSeparatorWidth - separatorWidth) / 2.f - margin;
+
+            if ((i != expandedColumn) && borderArea.contains(pos))
+            {
+                columnIndex = i + 1;
+                pixelOffset = pos.x - (x + totalSeparatorWidth / 2.f);
+                return true;
+            }
+
+            x += totalSeparatorWidth;
+        }
+
+        return false;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2379,6 +2594,13 @@ namespace tgui
         // If the scrollbar was at the bottom then keep it at the bottom if it changes due to a different viewport size
         if (verticalScrollbarAtBottom && (m_verticalScrollbar->getValue() + m_verticalScrollbar->getViewportSize() < m_verticalScrollbar->getMaximum()))
             m_verticalScrollbar->setValue(m_verticalScrollbar->getMaximum() - m_verticalScrollbar->getViewportSize());
+
+        // Update the size of the header texture (in case there will be one).
+        // The size depends on many values, but updateScrollbars() is called when any of them are changed.
+        float headerWidth = getInnerSize().x - m_paddingCached.getLeft() - m_paddingCached.getRight();
+        if (m_verticalScrollbar->isShown())
+            headerWidth -= m_verticalScrollbar->getSize().x;
+        m_spriteHeaderBackground.setSize({headerWidth, getCurrentHeaderHeight()});
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2429,7 +2651,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ListView::drawHeaderText(BackendRenderTargetBase& target, RenderStates states, float columnWidth, float headerHeight, std::size_t column) const
+    void ListView::drawHeaderText(BackendRenderTarget& target, RenderStates states, float columnWidth, float headerHeight, std::size_t column) const
     {
         if (column >= m_columns.size())
             return;
@@ -2440,7 +2662,7 @@ namespace tgui
         target.addClippingLayer(states, {{textPadding, 0}, {columnWidth - (2 * textPadding), headerHeight}});
 
         float translateX;
-        if ((m_columns[column].alignment == ColumnAlignment::Left) || (column >= m_columns.size()))
+        if (m_columns[column].alignment == ColumnAlignment::Left)
             translateX = textPadding;
         else if (m_columns[column].alignment == ColumnAlignment::Center)
             translateX = (columnWidth - m_columns[column].text.getSize().x) / 2.f;
@@ -2455,14 +2677,14 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ListView::drawColumn(BackendRenderTargetBase& target, RenderStates states, std::size_t firstItem, std::size_t lastItem, std::size_t column, float columnWidth) const
+    void ListView::drawColumn(BackendRenderTarget& target, RenderStates states, std::size_t firstItem, std::size_t lastItem, std::size_t column, float columnWidth) const
     {
         if (firstItem == lastItem)
             return;
 
         const unsigned int requiredItemHeight = m_itemHeight + (m_showHorizontalGridLines ? m_gridLinesWidth : 0);
-        const float verticalTextOffset = (m_itemHeight - Text::getLineHeight(m_fontCached, m_textSize)) / 2.0f;
-        const float textPadding = Text::getExtraHorizontalOffset(m_fontCached, m_textSize);
+        const float verticalTextOffset = (m_itemHeight - Text::getLineHeight(m_fontCached, m_textSizeCached)) / 2.0f;
+        const float textPadding = Text::getExtraHorizontalOffset(m_fontCached, m_textSizeCached);
         const float columnHeight = getInnerSize().y - m_paddingCached.getTop() - m_paddingCached.getBottom()
                                    - getCurrentHeaderHeight() - (m_horizontalScrollbar->isShown() ? m_horizontalScrollbar->getSize().y : 0);
 
@@ -2542,7 +2764,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ListView::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void ListView::draw(BackendRenderTarget& target, RenderStates states) const
     {
         const RenderStates statesForScrollbar = states;
 
@@ -2554,7 +2776,10 @@ namespace tgui
         }
 
         // Draw the background
-        target.drawFilledRect(states, getInnerSize(), Color::applyOpacity(m_backgroundColorCached, m_opacityCached));
+        if (m_spriteBackground.isSet())
+            target.drawSprite(states, m_spriteBackground);
+        else if (m_backgroundColorCached != Color::Transparent)
+            target.drawFilledRect(states, getInnerSize(), Color::applyOpacity(m_backgroundColorCached, m_opacityCached));
 
         const unsigned int totalItemHeight = m_itemHeight + (m_showHorizontalGridLines ? m_gridLinesWidth : 0);
 
@@ -2591,7 +2816,9 @@ namespace tgui
         {
             // We deliberately draw behind the header separator to make sure it has the same color as
             // the column separator when the color is semi-transparent.
-            if (m_headerBackgroundColorCached.isSet())
+            if (m_spriteHeaderBackground.isSet())
+                target.drawSprite(states, m_spriteHeaderBackground);
+            else if (m_headerBackgroundColorCached.isSet())
                 target.drawFilledRect(states, {availableWidth, totalHeaderHeight}, Color::applyOpacity(m_headerBackgroundColorCached, m_opacityCached));
 
             // Draw the separator line between the header and the contents
@@ -2644,7 +2871,7 @@ namespace tgui
             }
 
             // Draw the background of the item on which the mouse is standing
-            if ((m_hoveredItem >= 0) && (m_selectedItems.find(m_hoveredItem) == m_selectedItems.end()) && m_backgroundColorHoverCached.isSet())
+            if ((m_hoveredItem >= 0) && (m_selectedItems.find(static_cast<std::size_t>(m_hoveredItem)) == m_selectedItems.end()) && m_backgroundColorHoverCached.isSet())
             {
                 states.transform.translate({0, m_hoveredItem * static_cast<float>(totalItemHeight) - m_verticalScrollbar->getValue()});
                 target.drawFilledRect(states, {availableWidth, static_cast<float>(m_itemHeight)}, Color::applyOpacity(m_backgroundColorHoverCached, m_opacityCached));
@@ -2673,7 +2900,7 @@ namespace tgui
             for (std::size_t col = 0; col < m_columns.size(); ++col)
             {
                 if (m_expandLastColumn && (col + 1 == m_columns.size()))
-                    drawHeaderText(target, headerStates, availableWidth - columnLeftPos, headerHeight, col);
+                    drawHeaderText(target, headerStates, std::max(std::max(m_columns[col].maxItemWidth, m_columns[col].width), availableWidth - columnLeftPos), headerHeight, col);
                 else
                 {
                     drawHeaderText(target, headerStates, m_columns[col].width, headerHeight, col);
@@ -2709,7 +2936,7 @@ namespace tgui
             for (std::size_t col = 0; col < m_columns.size(); ++col)
             {
                 if (m_expandLastColumn && (col + 1 == m_columns.size()))
-                    drawColumn(target, states, firstItem, lastItem, col, std::max(m_columns[col].maxItemWidth, availableWidth - columnLeftPos));
+                    drawColumn(target, states, firstItem, lastItem, col, std::max(std::max(m_columns[col].maxItemWidth, m_columns[col].width), availableWidth - columnLeftPos));
                 else
                 {
                     drawColumn(target, states, firstItem, lastItem, col, m_columns[col].width);
@@ -2740,6 +2967,13 @@ namespace tgui
         }
 
         target.removeClippingLayer();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr ListView::clone() const
+    {
+        return std::make_shared<ListView>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,7 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Duration.hpp>
 
 TEST_CASE("[Duration]")
 {
@@ -42,7 +41,7 @@ TEST_CASE("[Duration]")
             REQUIRE(tgui::Duration(0) == std::chrono::nanoseconds(0));
             REQUIRE(tgui::Duration(15) == std::chrono::milliseconds(15));
 
-#if TGUI_HAS_BACKEND_SFML
+#if TGUI_HAS_WINDOW_BACKEND_SFML
             REQUIRE(tgui::Duration(sf::milliseconds(20)) == std::chrono::milliseconds(20));
 #endif
         }
@@ -53,7 +52,7 @@ TEST_CASE("[Duration]")
         REQUIRE(std::chrono::duration<int>(tgui::Duration(10000)).count() == 10);
         REQUIRE(std::chrono::nanoseconds(tgui::Duration(std::chrono::microseconds(3))).count() == 3000);
 
-#if TGUI_HAS_BACKEND_SFML
+#if TGUI_HAS_WINDOW_BACKEND_SFML
         REQUIRE(sf::Time(tgui::Duration(std::chrono::milliseconds(50))).asMilliseconds() == 50);
 #endif
     }

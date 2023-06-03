@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -28,15 +28,18 @@
 #define TGUI_ANY_HPP
 
 #include <TGUI/Config.hpp>
-#include <type_traits>
-#include <utility>
-#include <typeinfo>
 
-#if TGUI_COMPILED_WITH_CPP_VER >= 17
-    #include <any>
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <type_traits>
+    #include <utility>
+    #include <typeinfo>
+
+    #if TGUI_COMPILED_WITH_CPP_VER >= 17
+        #include <any>
+    #endif
 #endif
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
 #if TGUI_COMPILED_WITH_CPP_VER >= 17
     using Any = std::any;
@@ -50,35 +53,40 @@ namespace tgui
     struct Any
     {
         template<class T>
-        using StorageType = typename std::decay<T>::type;
+        using StorageType = std::decay_t<T>;
 
-        bool is_null() const
+        TGUI_NODISCARD bool is_null() const
         {
             return ptr == nullptr;
         }
 
-        bool not_null() const
+        TGUI_NODISCARD bool not_null() const
         {
             return ptr != nullptr;
         }
 
         template<typename U>
-        Any(U&& value)
+        Any(U&& value) // NOLINT(bugprone-forwarding-reference-overload)
             : ptr{new Derived<StorageType<U>>(std::forward<U>(value))}
         {
         }
 
-        template<class U>
-        bool is() const
+        TGUI_NODISCARD bool has_value() const noexcept
         {
-            typedef StorageType<U> T;
+            return ptr != nullptr;
+        }
+
+        template<class U>
+        TGUI_NODISCARD bool is() const
+        {
+            using T = StorageType<U>;
             return (dynamic_cast<Derived<T>*>(ptr) != nullptr);
         }
 
         template<class U>
         StorageType<U>& as() const
         {
-            typedef StorageType<U> T;
+            using T = StorageType<U>;
             auto derived = dynamic_cast<Derived<T>*>(ptr);
             if (!derived)
                 throw std::bad_cast();
@@ -110,7 +118,7 @@ namespace tgui
 
         Any& operator=(const Any& a)
         {
-            if (ptr == a.ptr)
+            if ((this == &a) || (ptr == a.ptr))
                 return *this;
 
             auto old_ptr = ptr;
@@ -125,7 +133,7 @@ namespace tgui
 
         Any& operator=(Any&& a) noexcept
         {
-            if (ptr == a.ptr)
+            if ((this == &a) || (ptr == a.ptr))
                 return *this;
 
             std::swap(ptr, a.ptr);
@@ -141,15 +149,15 @@ namespace tgui
     private:
         struct Base
         {
-            virtual ~Base() {}
-            virtual Base* clone() const = 0;
+            virtual ~Base() = default;
+            TGUI_NODISCARD virtual Base* clone() const = 0;
         };
 
         template<typename T>
         struct Derived : Base
         {
             template<typename U>
-            Derived(U&& val) :
+            Derived(U&& val) : // NOLINT(bugprone-forwarding-reference-overload)
                 value(std::forward<U>(val))
             {
             }
@@ -162,7 +170,7 @@ namespace tgui
             T value;
         };
 
-        Base* clone() const
+        TGUI_NODISCARD Base* clone() const
         {
             if (ptr)
                 return ptr->clone();
@@ -174,7 +182,7 @@ namespace tgui
     };
 
     template<typename T>
-    T AnyCast(const Any& obj)
+    TGUI_NODISCARD T AnyCast(const Any& obj)
     {
         return obj.as<T>();
     }

@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -26,20 +26,20 @@
 #include <TGUI/TGUI.hpp>
 #include <iostream>
 
-void login(tgui::EditBox::Ptr username, tgui::EditBox::Ptr password)
+void login(const tgui::EditBox::Ptr& username, const tgui::EditBox::Ptr& password)
 {
     std::cout << "Username: " << username->getText() << std::endl;
     std::cout << "Password: " << password->getText() << std::endl;
 }
 
-void updateTextSize(tgui::GuiBase& gui)
+void updateTextSize(tgui::BackendGui& gui)
 {
     // Update the text size of all widgets in the gui, based on the current window height
     const float windowHeight = gui.getView().getRect().height;
     gui.setTextSize(static_cast<unsigned int>(0.07f * windowHeight)); // 7% of height
 }
 
-void loadWidgets(tgui::GuiBase& gui)
+void loadWidgets(tgui::BackendGui& gui)
 {
     // Specify an initial text size instead of using the default value
     updateTextSize(gui);
@@ -50,7 +50,7 @@ void loadWidgets(tgui::GuiBase& gui)
     // Create the background image
     // The picture is of type tgui::Picture::Ptr which is actually just a typedef for std::shared_widget<tgui::Picture>
     // The picture will fit the entire window and will scale with it
-    auto picture = tgui::Picture::create("../xubuntu_bg_aluminium.jpg");
+    auto picture = tgui::Picture::create("xubuntu_bg_aluminium.jpg");
     picture->setSize({"100%", "100%"});
     gui.add(picture);
 
@@ -82,7 +82,7 @@ void loadWidgets(tgui::GuiBase& gui)
     button->onPress(&login, editBoxUsername, editBoxPassword);
 }
 
-bool runExample(tgui::GuiBase& gui)
+bool runExample(tgui::BackendGui& gui)
 {
     try
     {

@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,11 +27,10 @@
 #define TGUI_GUI_BUILDER_EDIT_BOX_PROPERTIES_HPP
 
 #include "WidgetProperties.hpp"
-#include <TGUI/Widgets/EditBox.hpp>
 
 struct EditBoxProperties : WidgetProperties
 {
-    void updateProperty(tgui::Widget::Ptr widget, const tgui::String& property, const tgui::String& value) const override
+    void updateProperty(const tgui::Widget::Ptr& widget, const tgui::String& property, const tgui::String& value) const override
     {
         auto editBox = widget->cast<tgui::EditBox>();
         if (property == "Text")
@@ -41,7 +40,7 @@ struct EditBoxProperties : WidgetProperties
         else if (property == "TextSize")
             editBox->setTextSize(value.toUInt());
         else if (property == "PasswordCharacter")
-            editBox->setPasswordCharacter(value.empty() ? '\0' : static_cast<char>(value[0]));
+            editBox->setPasswordCharacter(value.empty() ? U'\0' : value[0]);
         else if (property == "MaximumCharacters")
             editBox->setMaximumCharacters(value.toUInt());
         else if (property == "Alignment")
@@ -58,7 +57,7 @@ struct EditBoxProperties : WidgetProperties
             WidgetProperties::updateProperty(widget, property, value);
     }
 
-    PropertyValueMapPair initProperties(tgui::Widget::Ptr widget) const override
+    TGUI_NODISCARD PropertyValueMapPair initProperties(const tgui::Widget::Ptr& widget) const override
     {
         auto pair = WidgetProperties::initProperties(widget);
         auto editBox = widget->cast<tgui::EditBox>();
@@ -105,7 +104,7 @@ struct EditBoxProperties : WidgetProperties
 
 private:
 
-    static tgui::EditBox::Alignment deserializeAlignment(tgui::String value)
+    TGUI_NODISCARD static tgui::EditBox::Alignment deserializeAlignment(tgui::String value)
     {
         value = value.trim().toLower();
         if (value == "right")
@@ -116,7 +115,7 @@ private:
             return tgui::EditBox::Alignment::Left;
     }
 
-    static tgui::String serializeAlignment(tgui::EditBox::Alignment alignment)
+    TGUI_NODISCARD static tgui::String serializeAlignment(tgui::EditBox::Alignment alignment)
     {
         if (alignment == tgui::EditBox::Alignment::Center)
             return "Center";

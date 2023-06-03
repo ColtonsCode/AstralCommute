@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,6 +23,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
+#include "GuiBuilder.hpp"
 #include "WidgetProperties/BitmapButtonProperties.hpp"
 #include "WidgetProperties/ButtonProperties.hpp"
 #include "WidgetProperties/ChatBoxProperties.hpp"
@@ -39,6 +40,7 @@
 #include "WidgetProperties/ProgressBarProperties.hpp"
 #include "WidgetProperties/RadioButtonProperties.hpp"
 #include "WidgetProperties/RangeSliderProperties.hpp"
+#include "WidgetProperties/RichTextLabelProperties.hpp"
 #include "WidgetProperties/ScrollablePanelProperties.hpp"
 #include "WidgetProperties/ScrollbarProperties.hpp"
 #include "WidgetProperties/SliderProperties.hpp"
@@ -46,22 +48,13 @@
 #include "WidgetProperties/SpinControlProperties.hpp"
 #include "WidgetProperties/TabsProperties.hpp"
 #include "WidgetProperties/TextAreaProperties.hpp"
+#include "WidgetProperties/ToggleButtonProperties.hpp"
 #include "WidgetProperties/TreeViewProperties.hpp"
-#include "GuiBuilder.hpp"
-
-#include <fstream>
-#include <cassert>
-#include <memory>
-#include <string>
-#include <thread> // this_thread::sleep_for
-#include <cctype> // isdigit
-#include <cmath> // max
-#include <stack>
-#include <map>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static const float EDIT_BOX_HEIGHT = 24;
+static const unsigned int UNDO_MAX_SAVES = 1000;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -69,59 +62,62 @@ namespace
 {
     bool compareRenderers(std::map<tgui::String, tgui::ObjectConverter> themePropertyValuePairs, std::map<tgui::String, tgui::ObjectConverter> widgetPropertyValuePairs)
     {
-        for (auto themeIt = themePropertyValuePairs.begin(); themeIt != themePropertyValuePairs.end(); ++themeIt)
+        for (auto& pair : themePropertyValuePairs)
         {
-            if (((widgetPropertyValuePairs[themeIt->first].getType() == tgui::ObjectConverter::Type::None)
-              && (themeIt->second.getType() != tgui::ObjectConverter::Type::None))
-             || ((widgetPropertyValuePairs[themeIt->first].getType() != tgui::ObjectConverter::Type::None)
-              && (themeIt->second.getType() == tgui::ObjectConverter::Type::None))
-             || ((widgetPropertyValuePairs[themeIt->first].getType() == tgui::ObjectConverter::Type::String)
-              && (themeIt->second.getType() != tgui::ObjectConverter::Type::String)
-              && (widgetPropertyValuePairs[themeIt->first].getString() != themeIt->second.getString()))
-             || ((widgetPropertyValuePairs[themeIt->first].getType() != tgui::ObjectConverter::Type::String)
-              && (themeIt->second.getType() == tgui::ObjectConverter::Type::String)
-              && (widgetPropertyValuePairs[themeIt->first].getString() != themeIt->second.getString()))
-             || ((widgetPropertyValuePairs[themeIt->first].getType() != tgui::ObjectConverter::Type::String)
-              && (themeIt->second.getType() != tgui::ObjectConverter::Type::String)
-              && (widgetPropertyValuePairs[themeIt->first] != themeIt->second)))
+            const auto& property = pair.first;
+            auto& value = pair.second;
+
+            if (((widgetPropertyValuePairs[property].getType() == tgui::ObjectConverter::Type::None)
+              && (value.getType() != tgui::ObjectConverter::Type::None))
+             || ((widgetPropertyValuePairs[property].getType() != tgui::ObjectConverter::Type::None)
+              && (value.getType() == tgui::ObjectConverter::Type::None))
+             || ((widgetPropertyValuePairs[property].getType() == tgui::ObjectConverter::Type::String)
+              && (value.getType() != tgui::ObjectConverter::Type::String)
+              && (widgetPropertyValuePairs[property].getString() != value.getString()))
+             || ((widgetPropertyValuePairs[property].getType() != tgui::ObjectConverter::Type::String)
+              && (value.getType() == tgui::ObjectConverter::Type::String)
+              && (widgetPropertyValuePairs[property].getString() != value.getString()))
+             || ((widgetPropertyValuePairs[property].getType() != tgui::ObjectConverter::Type::String)
+              && (value.getType() != tgui::ObjectConverter::Type::String)
+              && (widgetPropertyValuePairs[property] != value)))
             {
                 // Exception: Colors should never be compared as strings
-                if (((widgetPropertyValuePairs[themeIt->first].getType() == tgui::ObjectConverter::Type::Color)
-                 && (themeIt->second.getType() == tgui::ObjectConverter::Type::String))
-                || ((widgetPropertyValuePairs[themeIt->first].getType() == tgui::ObjectConverter::Type::String)
-                 && (themeIt->second.getType() == tgui::ObjectConverter::Type::Color)))
+                if (((widgetPropertyValuePairs[property].getType() == tgui::ObjectConverter::Type::Color)
+                 && (value.getType() == tgui::ObjectConverter::Type::String))
+                || ((widgetPropertyValuePairs[property].getType() == tgui::ObjectConverter::Type::String)
+                 && (value.getType() == tgui::ObjectConverter::Type::Color)))
                 {
-                    if (widgetPropertyValuePairs[themeIt->first].getColor() == themeIt->second.getColor())
+                    if (widgetPropertyValuePairs[property].getColor() == value.getColor())
                         continue;
                 }
 
                 // Exception: Don't use the data pointers and try to use absolute paths to compare textures
-                if ((widgetPropertyValuePairs[themeIt->first].getType() == tgui::ObjectConverter::Type::Texture)
-                 && (themeIt->second.getType() == tgui::ObjectConverter::Type::Texture)
-                 && widgetPropertyValuePairs[themeIt->first].getTexture().getData()
-                 && themeIt->second.getTexture().getData())
+                if ((widgetPropertyValuePairs[property].getType() == tgui::ObjectConverter::Type::Texture)
+                 && (value.getType() == tgui::ObjectConverter::Type::Texture)
+                 && widgetPropertyValuePairs[property].getTexture().getData()
+                 && value.getTexture().getData())
                 {
-                    if ((widgetPropertyValuePairs[themeIt->first].getTexture().getId() == themeIt->second.getTexture().getId())
-                     && (widgetPropertyValuePairs[themeIt->first].getTexture().getMiddleRect() == themeIt->second.getTexture().getMiddleRect()))
+                    if ((widgetPropertyValuePairs[property].getTexture().getId() == value.getTexture().getId())
+                     && (widgetPropertyValuePairs[property].getTexture().getMiddleRect() == value.getTexture().getMiddleRect()))
                     {
                         continue;
                     }
 
-                    const tgui::String absoluteFilename1 = (tgui::getResourcePath() / tgui::Filesystem::Path(widgetPropertyValuePairs[themeIt->first].getTexture().getId())).asString();
-                    const tgui::String absoluteFilename2 = (tgui::getResourcePath() / tgui::Filesystem::Path(themeIt->second.getTexture().getId())).asString();
+                    const tgui::String absoluteFilename1 = (tgui::getResourcePath() / tgui::Filesystem::Path(widgetPropertyValuePairs[property].getTexture().getId())).asString();
+                    const tgui::String absoluteFilename2 = (tgui::getResourcePath() / tgui::Filesystem::Path(value.getTexture().getId())).asString();
                     if ((absoluteFilename1 == absoluteFilename2)
-                     && (widgetPropertyValuePairs[themeIt->first].getTexture().getMiddleRect() == themeIt->second.getTexture().getMiddleRect()))
+                     && (widgetPropertyValuePairs[property].getTexture().getMiddleRect() == value.getTexture().getMiddleRect()))
                     {
                         continue;
                     }
                 }
 
                 // Exception: Nested renderers need to check for the same exceptions
-                if ((themeIt->second.getType() == tgui::ObjectConverter::Type::RendererData)
-                 && (widgetPropertyValuePairs[themeIt->first].getType() == tgui::ObjectConverter::Type::RendererData))
+                if ((value.getType() == tgui::ObjectConverter::Type::RendererData)
+                 && (widgetPropertyValuePairs[property].getType() == tgui::ObjectConverter::Type::RendererData))
                 {
-                    if (compareRenderers(themeIt->second.getRenderer()->propertyValuePairs,
-                                         widgetPropertyValuePairs[themeIt->first].getRenderer()->propertyValuePairs))
+                    if (compareRenderers(value.getRenderer()->propertyValuePairs,
+                                         widgetPropertyValuePairs[property].getRenderer()->propertyValuePairs))
                     {
                         continue;
                     }
@@ -131,42 +127,45 @@ namespace
             }
         }
 
-        for (auto widgetIt = widgetPropertyValuePairs.begin(); widgetIt != widgetPropertyValuePairs.end(); ++widgetIt)
+        for (auto& pair : widgetPropertyValuePairs)
         {
-            if (((themePropertyValuePairs[widgetIt->first].getType() == tgui::ObjectConverter::Type::None)
-              && (widgetIt->second.getType() != tgui::ObjectConverter::Type::None))
-             || ((themePropertyValuePairs[widgetIt->first].getType() != tgui::ObjectConverter::Type::None)
-              && (widgetIt->second.getType() == tgui::ObjectConverter::Type::None))
-             || ((themePropertyValuePairs[widgetIt->first].getType() == tgui::ObjectConverter::Type::String)
-              && (widgetIt->second.getType() != tgui::ObjectConverter::Type::String)
-              && (themePropertyValuePairs[widgetIt->first].getString() != widgetIt->second.getString()))
-             || ((themePropertyValuePairs[widgetIt->first].getType() != tgui::ObjectConverter::Type::String)
-              && (widgetIt->second.getType() == tgui::ObjectConverter::Type::String)
-              && (themePropertyValuePairs[widgetIt->first].getString() != widgetIt->second.getString()))
-             || ((themePropertyValuePairs[widgetIt->first].getType() != tgui::ObjectConverter::Type::String)
-              && (widgetIt->second.getType() != tgui::ObjectConverter::Type::String)
-              && (themePropertyValuePairs[widgetIt->first] != widgetIt->second)))
+            const auto& property = pair.first;
+            auto& value = pair.second;
+
+            if (((themePropertyValuePairs[property].getType() == tgui::ObjectConverter::Type::None)
+              && (value.getType() != tgui::ObjectConverter::Type::None))
+             || ((themePropertyValuePairs[property].getType() != tgui::ObjectConverter::Type::None)
+              && (value.getType() == tgui::ObjectConverter::Type::None))
+             || ((themePropertyValuePairs[property].getType() == tgui::ObjectConverter::Type::String)
+              && (value.getType() != tgui::ObjectConverter::Type::String)
+              && (themePropertyValuePairs[property].getString() != value.getString()))
+             || ((themePropertyValuePairs[property].getType() != tgui::ObjectConverter::Type::String)
+              && (value.getType() == tgui::ObjectConverter::Type::String)
+              && (themePropertyValuePairs[property].getString() != value.getString()))
+             || ((themePropertyValuePairs[property].getType() != tgui::ObjectConverter::Type::String)
+              && (value.getType() != tgui::ObjectConverter::Type::String)
+              && (themePropertyValuePairs[property] != value)))
             {
                 // Exception: An empty texture is considered the same as an empty property
-                if ((themePropertyValuePairs[widgetIt->first].getType() == tgui::ObjectConverter::Type::None)
-                 && (widgetIt->second.getType() == tgui::ObjectConverter::Type::Texture)
-                 && !widgetIt->second.getTexture().getData())
+                if ((themePropertyValuePairs[property].getType() == tgui::ObjectConverter::Type::None)
+                 && (value.getType() == tgui::ObjectConverter::Type::Texture)
+                 && !value.getTexture().getData())
                 {
                     continue;
                 }
 
                 // Exception: Textures need to be checked differently, but this is already handled in earlier check
-                if ((themePropertyValuePairs[widgetIt->first].getType() == tgui::ObjectConverter::Type::Texture)
-                 && (widgetIt->second.getType() == tgui::ObjectConverter::Type::Texture)
-                 && themePropertyValuePairs[widgetIt->first].getTexture().getData()
-                 && widgetIt->second.getTexture().getData())
+                if ((themePropertyValuePairs[property].getType() == tgui::ObjectConverter::Type::Texture)
+                 && (value.getType() == tgui::ObjectConverter::Type::Texture)
+                 && themePropertyValuePairs[property].getTexture().getData()
+                 && value.getTexture().getData())
                 {
                     continue;
                 }
 
                 // Exception: Renderers need to be checked differently, but this is already handled in earlier check
-                if ((widgetIt->second.getType() == tgui::ObjectConverter::Type::RendererData)
-                 && (themePropertyValuePairs[widgetIt->first].getType() == tgui::ObjectConverter::Type::RendererData))
+                if ((value.getType() == tgui::ObjectConverter::Type::RendererData)
+                 && (themePropertyValuePairs[property].getType() == tgui::ObjectConverter::Type::RendererData))
                 {
                     continue;
                 }
@@ -208,16 +207,15 @@ namespace
         tgui::Filesystem::Path guiBuilderDataDir;
         if (!localDataDir.isEmpty() && tgui::Filesystem::directoryExists(localDataDir))
         {
-            tgui::String versionNumber = tgui::String::fromNumber(TGUI_VERSION_MAJOR) + U"." + tgui::String::fromNumber(TGUI_VERSION_MINOR);
-            const auto destDir = localDataDir / U"tgui" / versionNumber / U"gui-builder";
+            const tgui::String tguiDirName = U"tgui-" + tgui::String::fromNumber(TGUI_VERSION_MAJOR);
+            const auto destDir = localDataDir / tguiDirName / U"gui-builder";
             if (tgui::Filesystem::directoryExists(destDir))
                 guiBuilderDataDir = destDir;
             else if (createIfNotFound)
             {
                 // Create the direcory structure if it doesn't exist yet
-                tgui::Filesystem::createDirectory(localDataDir / U"tgui");
-                tgui::Filesystem::createDirectory(localDataDir / U"tgui" / versionNumber);
-                if (tgui::Filesystem::createDirectory(localDataDir / U"tgui" / versionNumber / U"gui-builder"))
+                tgui::Filesystem::createDirectory(localDataDir / tguiDirName);
+                if (tgui::Filesystem::createDirectory(localDataDir / tguiDirName / U"gui-builder"))
                     guiBuilderDataDir = destDir;
             }
         }
@@ -241,6 +239,24 @@ GuiBuilder::GuiBuilder(const tgui::String& programName) :
     // One case where this seems to be required is to start the executable on macOS by double-clicking it.
     tgui::setResourcePath((tgui::Filesystem::getCurrentWorkingDirectory() / m_programPath).getNormalForm());
 
+#ifdef TGUI_SYSTEM_LINUX
+    // When running the executable from the terminal, both the working directory and the program path via argv[0] may be
+    // incorrect if no relative or absolute path was provided but the executable was instead found inside the PATH.
+    // So if we can't find our 'resources' folder, we will ask the OS in which path our executable is located.
+    if (!tgui::Filesystem::directoryExists(tgui::getResourcePath() / U"resources"))
+    {
+        char pathStr[FILENAME_MAX];
+        const ssize_t pathLen = readlink("/proc/self/exe", pathStr, FILENAME_MAX);
+        if (pathLen > 0)
+        {
+            const tgui::Filesystem::Path absoluteFilePath(tgui::String(pathStr, static_cast<std::size_t>(pathLen)));
+            const tgui::Filesystem::Path dirContainingExe(absoluteFilePath.getParentPath());
+            if (tgui::Filesystem::directoryExists(dirContainingExe / U"resources"))
+                tgui::setResourcePath(dirContainingExe);
+        }
+    }
+#endif
+
     m_widgetProperties["BitmapButton"] = std::make_unique<BitmapButtonProperties>();
     m_widgetProperties["Button"] = std::make_unique<ButtonProperties>();
     m_widgetProperties["ChatBox"] = std::make_unique<ChatBoxProperties>();
@@ -258,6 +274,7 @@ GuiBuilder::GuiBuilder(const tgui::String& programName) :
     m_widgetProperties["ProgressBar"] = std::make_unique<ProgressBarProperties>();
     m_widgetProperties["RadioButton"] = std::make_unique<RadioButtonProperties>();
     m_widgetProperties["RangeSlider"] = std::make_unique<RangeSliderProperties>();
+    m_widgetProperties["RichTextLabel"] = std::make_unique<RichTextLabelProperties>();
     m_widgetProperties["ScrollablePanel"] = std::make_unique<ScrollablePanelProperties>();
     m_widgetProperties["Scrollbar"] = std::make_unique<ScrollbarProperties>();
     m_widgetProperties["Slider"] = std::make_unique<SliderProperties>();
@@ -265,6 +282,7 @@ GuiBuilder::GuiBuilder(const tgui::String& programName) :
     m_widgetProperties["SpinControl"] = std::make_unique<SpinControlProperties>();
     m_widgetProperties["Tabs"] = std::make_unique<TabsProperties>();
     m_widgetProperties["TextArea"] = std::make_unique<TextAreaProperties>();
+    m_widgetProperties["ToggleButton"] = std::make_unique<ToggleButtonProperties>();
     m_widgetProperties["TreeView"] = std::make_unique<TreeViewProperties>();
 
     m_window->setIcon((tgui::getResourcePath() / "resources/Icon.png").asString());
@@ -288,6 +306,7 @@ void GuiBuilder::mainLoop()
         tgui::Event event;
         while (m_window->pollEvent(event))
         {
+            bool passEventToGui = true;
             if (event.type == tgui::Event::Type::Closed)
             {
                 while (!m_forms.empty())
@@ -297,7 +316,7 @@ void GuiBuilder::mainLoop()
             }
             else if (event.type == tgui::Event::Type::MouseButtonReleased)
             {
-                if (m_selectedForm)
+                if (m_selectedForm && !m_foregroundPanel)
                 {
                     if (event.mouseButton.button == tgui::Event::MouseButton::Left)
                         m_selectedForm->mouseReleased();
@@ -362,48 +381,86 @@ void GuiBuilder::mainLoop()
             }
             else if (event.type == tgui::Event::Type::KeyPressed)
             {
+#ifdef TGUI_SYSTEM_MACOS
+                const auto controlPressed = event.key.system;
+#else
+                const auto controlPressed = event.key.control;
+#endif
                 if ((event.key.code == tgui::Event::KeyboardKey::Left) || (event.key.code == tgui::Event::KeyboardKey::Right)
                  || (event.key.code == tgui::Event::KeyboardKey::Up) || (event.key.code == tgui::Event::KeyboardKey::Down))
                 {
                     if (m_selectedForm && (m_selectedForm->hasFocus() || m_widgetHierarchyTree->isFocused()))
+                    {
                         m_selectedForm->arrowKeyPressed(event.key);
+                        passEventToGui = false;
+                    }
                 }
                 else if (event.key.code == tgui::Event::KeyboardKey::Delete)
                 {
                     if (m_selectedForm && m_selectedForm->getSelectedWidget() && (m_selectedForm->hasFocus() || m_widgetHierarchyTree->isFocused()))
+                    {
                         removeSelectedWidget();
+                        passEventToGui = false;
+                    }
                 }
                 else if (event.key.code == tgui::Event::KeyboardKey::Escape)
                 {
                     if (m_selectedForm && (m_selectedForm->hasFocus() || m_widgetHierarchyTree->isFocused()))
+                    {
                         m_selectedForm->selectParent();
+                        passEventToGui = false;
+                    }
                 }
-                else if ((event.key.code == tgui::Event::KeyboardKey::S) && event.key.control)
+                else if ((event.key.code == tgui::Event::KeyboardKey::S) && controlPressed)
                 {
                     if (m_selectedForm)
+                    {
                         m_selectedForm->save();
+                        passEventToGui = false;
+                    }
                 }
-                else if ((event.key.code == tgui::Event::KeyboardKey::C) && event.key.control)
+                else if ((event.key.code == tgui::Event::KeyboardKey::C) && controlPressed)
                 {
                     if (m_selectedForm && m_selectedForm->getSelectedWidget() && (m_selectedForm->hasFocus() || m_widgetHierarchyTree->isFocused()))
+                    {
                         copyWidgetToInternalClipboard(m_selectedForm->getSelectedWidget());
+                        passEventToGui = false;
+                    }
                 }
-                else if ((event.key.code == tgui::Event::KeyboardKey::V) && event.key.control)
+                else if ((event.key.code == tgui::Event::KeyboardKey::V) && controlPressed)
                 {
                     if (m_selectedForm && (m_selectedForm->hasFocus() || m_widgetHierarchyTree->isFocused()))
+                    {
                         pasteWidgetFromInternalClipboard();
+                        passEventToGui = false;
+                    }
                 }
-                else if ((event.key.code == tgui::Event::KeyboardKey::X) && event.key.control)
+                else if ((event.key.code == tgui::Event::KeyboardKey::X) && controlPressed)
                 {
                     if (m_selectedForm && m_selectedForm->getSelectedWidget() && (m_selectedForm->hasFocus() || m_widgetHierarchyTree->isFocused()))
                     {
                         copyWidgetToInternalClipboard(m_selectedForm->getSelectedWidget());
                         removeSelectedWidget();
+                        passEventToGui = false;
+                    }
+                }
+                else if ((event.key.code == tgui::Event::KeyboardKey::Z) && controlPressed)
+                {
+                    if (m_selectedForm && (m_selectedForm->hasFocus() || m_widgetHierarchyTree->isFocused() || m_propertiesWindow->isFocused()))
+                    {
+                        // Make sure no property field is still focused as removing the widgets causes
+                        // an unfocus event to be fired. Instead we trigger unfocus here, before destroying things.
+                        if (m_propertiesWindow->isFocused())
+                            m_propertiesWindow->setFocused(false);
+
+                        loadUndoState();
+                        passEventToGui = false;
                     }
                 }
             }
 
-            m_gui->handleEvent(event);
+            if (passEventToGui)
+                m_gui->handleEvent(event);
         }
 
         if (m_selectedForm && m_selectedForm->hasFocus())
@@ -465,7 +522,14 @@ bool GuiBuilder::loadGuiBuilderState()
         for (const auto& theme : node->propertyValuePairs["Themes"]->valueList)
         {
             const auto deserializedTheme = tgui::Deserializer::deserialize(tgui::ObjectConverter::Type::String, theme).getString();
-            m_themes[deserializedTheme] = deserializedTheme;
+            try
+            {
+                m_themes[deserializedTheme] = {deserializedTheme};
+            }
+            catch (const tgui::Exception& e)
+            {
+                displayErrorMessage(U"Failed to import theme '" + deserializedTheme + U"', reason: " + e.what());
+            }
         }
     }
 
@@ -487,15 +551,15 @@ void GuiBuilder::saveGuiBuilderState()
 
     // Save the list of recent opened forms
     tgui::String recentFileList;
-    for (auto fileIt = m_recentFiles.begin(); fileIt != m_recentFiles.end(); ++fileIt)
+    for (const auto& recentFile : m_recentFiles)
     {
-        if (!tgui::Filesystem::fileExists(tgui::getResourcePath() / tgui::String(*fileIt)))
+        if (!tgui::Filesystem::fileExists(tgui::getResourcePath() / tgui::String(recentFile)))
             continue;
 
         if (recentFileList.empty())
-            recentFileList = "[" + tgui::Serializer::serialize(*fileIt);
+            recentFileList = "[" + tgui::Serializer::serialize(recentFile);
         else
-            recentFileList += ", " + tgui::Serializer::serialize(*fileIt);
+            recentFileList += ", " + tgui::Serializer::serialize(recentFile);
     }
     if (!recentFileList.empty())
     {
@@ -584,9 +648,12 @@ void GuiBuilder::reloadProperties()
         }
 
         addPropertyValueWidgets(topPosition, {"Name", {"String", selectedWidget->name}},
-            [=](const tgui::String& value){
-                if (selectedWidget->name != value)
+            [this,widget=selectedWidget.get()](const tgui::String& value){
+                if (widget->name != value)
+                {
+                    saveUndoState(GuiBuilder::UndoType::PropertyEdit);
                     changeWidgetName(value);
+                }
             });
 
         topPosition += 10;
@@ -594,9 +661,17 @@ void GuiBuilder::reloadProperties()
         for (const auto& property : m_propertyValuePairs.first)
         {
             addPropertyValueWidgets(topPosition, property,
-                [=](const tgui::String& value){
-                    if (updateWidgetProperty(property.first, value))
+                [this,propertyName=property.first](const tgui::String& value){
+                    saveUndoState(GuiBuilder::UndoType::PropertyEdit);
+
+                    if (updateWidgetProperty(propertyName, value))
                         m_selectedForm->setChanged(true);
+                    else
+                    {
+                        // The change wasn't accepted, so we don't need the undo state which we stored before the change
+                        m_undoSaves.pop_back();
+                        m_undoSavesDesc.pop_back();
+                    }
                 });
         }
 
@@ -610,15 +685,24 @@ void GuiBuilder::reloadProperties()
             for (const auto& property : m_propertyValuePairs.second)
             {
                 addPropertyValueWidgets(topPosition, property,
-                    [=](const tgui::String& value){
-                        if (updateWidgetProperty(property.first, value))
+                    [this,propertyName=property.first,widgetPtr=selectedWidget->ptr.get()](const tgui::String& value){
+                        saveUndoState(GuiBuilder::UndoType::PropertyEdit);
+
+                        if (updateWidgetProperty(propertyName, value))
                         {
                             m_selectedForm->setChanged(true);
 
                             // The value shouldn't always be exactly as typed. An empty string may be understood correctly when setting the property,
                             // but is can't be saved to a widget file properly. So we read the back the property to have a valid string and pass it
                             // back to the widget, so that the string stored in the renderer is always a valid string.
-                            m_widgetProperties.at(selectedWidget->ptr->getWidgetType())->updateProperty(selectedWidget->ptr, property.first, m_propertyValuePairs.second[property.first].second);
+                            m_widgetProperties.at(widgetPtr->getWidgetType())->updateProperty(
+                                widgetPtr->shared_from_this(), propertyName, m_propertyValuePairs.second[propertyName].second);
+                        }
+                        else
+                        {
+                            // The change wasn't accepted, so we don't need the undo state which we stored before the change
+                            m_undoSaves.pop_back();
+                            m_undoSavesDesc.pop_back();
                         }
                     });
             }
@@ -629,7 +713,7 @@ void GuiBuilder::reloadProperties()
     else // The form itself was selected
     {
         addPropertyValueWidgets(topPosition, {"Filename", {"String", m_selectedForm->getFilename()}},
-            [=](const tgui::String& value){
+            [this](const tgui::String& value){
                 if (m_selectedForm->getFilename() != value)
                 {
                     m_selectedForm->setChanged(true);
@@ -639,23 +723,23 @@ void GuiBuilder::reloadProperties()
             });
 
         addPropertyValueWidgets(topPosition, {"Width", {"UInt", tgui::String::fromNumber(m_selectedForm->getSize().x)}},
-            [=](const tgui::String& value){
+            [this](const tgui::String& value){
                 if (tgui::String::fromNumber(m_selectedForm->getSize().x) != value)
                 {
                     // Form is not marked as changed since the width is saved as editor property
                     const float newWidth = value.toFloat();
-                    m_formSize = { newWidth, m_selectedForm->getSize().y };
+                    m_formSize = {newWidth, m_selectedForm->getSize().y};
                     m_selectedForm->setSize(m_formSize);
                 }
             });
 
         addPropertyValueWidgets(topPosition, {"Height", {"UInt", tgui::String::fromNumber(m_selectedForm->getSize().y)}},
-            [=](const tgui::String& value){
+            [this](const tgui::String& value){
                 if (tgui::String::fromNumber(m_selectedForm->getSize().y) != value)
                 {
                     // Form is not marked as changed since the height is saved as editor property
                     const float newHeight = value.toFloat();
-                    m_formSize = { m_selectedForm->getSize().x, newHeight};
+                    m_formSize = {m_selectedForm->getSize().x, newHeight};
                     m_selectedForm->setSize(m_formSize);
                 }
             });
@@ -664,7 +748,7 @@ void GuiBuilder::reloadProperties()
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void GuiBuilder::widgetSelected(tgui::Widget::Ptr widget)
+void GuiBuilder::widgetSelected(const tgui::Widget::Ptr& widget)
 {
     initProperties();
 
@@ -701,12 +785,12 @@ void GuiBuilder::closeForm(Form* form)
     m_gui->add(messageBox);
 
     bool haltProgram = true;
-    messageBox->onButtonPress([=,&haltProgram](const tgui::String& button){
+    messageBox->onButtonPress([this,form,&haltProgram,panelPtr=panel.get(),msgBoxPtr=messageBox.get()](const tgui::String& button){
         if (button == "Yes")
             m_selectedForm->save();
 
-        m_gui->remove(panel);
-        m_gui->remove(messageBox);
+        m_gui->remove(panelPtr->shared_from_this());
+        m_gui->remove(msgBoxPtr->shared_from_this());
 
         if (m_selectedForm == form)
             m_selectedForm = nullptr;
@@ -741,9 +825,9 @@ void GuiBuilder::closeForm(Form* form)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void GuiBuilder::showLoadFileWindow(const tgui::String& title, const tgui::String& loadButtonCaption, bool fileMustExist, const tgui::String& defaultFilename, const std::function<void(const tgui::String&)>& onLoad)
+void GuiBuilder::showLoadFileWindow(const tgui::String& title, const tgui::String& loadButtonCaption, bool allowCreateFolder, bool fileMustExist, const tgui::String& defaultFilename, const std::function<void(const tgui::String&)>& onLoad)
 {
-    auto fileDialog = tgui::FileDialog::create(title, loadButtonCaption);
+    auto fileDialog = tgui::FileDialog::create(title, loadButtonCaption, allowCreateFolder);
     fileDialog->setFileMustExist(fileMustExist);
     if (m_forms.empty())
         fileDialog->setPath((tgui::getResourcePath() / m_defaultPath).getNormalForm());
@@ -753,9 +837,10 @@ void GuiBuilder::showLoadFileWindow(const tgui::String& title, const tgui::Strin
     fileDialog->setFilename(defaultFilename);
     openWindowWithFocus(fileDialog);
 
-    fileDialog->onFileSelect([onLoad](const std::vector<tgui::Filesystem::Path>& selectedFiles){
-        if (!selectedFiles.empty())
-            onLoad(selectedFiles[0].asString());
+    fileDialog->onFileSelect([onLoad](const tgui::String& selectedFile){
+        // We can't call onLoad here directly as it isn't allowed to destroy the file dialog during the callback.
+        // Instead we schedule a timer to call the onLoad function on the next iteration of the main loop.
+        tgui::Timer::scheduleCallback([onLoad, selectedFile]{ onLoad(selectedFile); });
     });
 }
 
@@ -779,15 +864,14 @@ void GuiBuilder::loadStartScreen()
         m_themes["themes/BabyBlue.txt"] = {(tgui::getResourcePath() / "themes/BabyBlue.txt").asString()};
         m_themes["themes/TransparentGrey.txt"] = {(tgui::getResourcePath() / "themes/TransparentGrey.txt").asString()};
     }
-
     auto panel = m_gui->get<tgui::Panel>("MainPanel");
-    panel->get<tgui::Panel>("PnlNewForm")->onClick([=]{
-        showLoadFileWindow("New form", "Create", false, getDefaultFilename(), [=](const tgui::String& filename){
+    panel->get<tgui::Panel>("PnlNewForm")->onClick([this]{
+        showLoadFileWindow("New form", "Create", true, false, getDefaultFilename(), [this](const tgui::String& filename){
             createNewForm(filename);
         });
     });
-    panel->get<tgui::Panel>("PnlLoadForm")->onClick([=]{
-        showLoadFileWindow("Load form", "Load", true, getDefaultFilename(), [this](const tgui::String& filename){ loadForm(filename); });
+    panel->get<tgui::Panel>("PnlLoadForm")->onClick([this]{
+        showLoadFileWindow("Load form", "Load", false, true, getDefaultFilename(), [this](const tgui::String& filename){ loadForm(filename); });
     });
 
     if (m_recentFiles.empty())
@@ -799,7 +883,7 @@ void GuiBuilder::loadStartScreen()
             auto labelRecentForm = panel->get<tgui::Label>("LblRecentForm" + tgui::String::fromNumber(i+1));
             labelRecentForm->setText(m_recentFiles[i]);
             labelRecentForm->setVisible(true);
-            labelRecentForm->onClick([=,filename=m_recentFiles[i]]{ loadForm(filename); });
+            labelRecentForm->onClick([this,filename=m_recentFiles[i]]{ loadForm(filename); });
 
             auto buttonRemoveFormFromList = panel->get<tgui::ClickableWidget>("BtnDeleteRecentForm" + tgui::String::fromNumber(i+1));
             buttonRemoveFormFromList->setVisible(true);
@@ -828,10 +912,10 @@ void GuiBuilder::loadEditingScreen(const tgui::String& filename)
 
     m_selectedWidgetComboBox->addItem(filename, "form");
     m_selectedWidgetComboBox->setSelectedItemById("form");
-    m_selectedWidgetComboBox->onItemSelect([this](tgui::String, tgui::String id){ m_selectedForm->selectWidgetById(id); });
+    m_selectedWidgetComboBox->onItemSelect([this](const tgui::String&, const tgui::String& id){ m_selectedForm->selectWidgetById(id); });
 
     m_menuBar = m_gui->get<tgui::MenuBar>("MenuBar");
-    m_menuBar->onMouseEnter([this]{ m_menuBar->moveToFront(); });
+    m_menuBar->onMouseEnter([menuBar=m_menuBar.get()]{ menuBar->moveToFront(); });
     m_menuBar->connectMenuItem({"File", "New"}, [this]{ menuBarCallbackNewForm(); });
     m_menuBar->connectMenuItem({"File", "Load"}, [this]{ menuBarCallbackLoadForm(); });
     m_menuBar->connectMenuItem({"File", "Save"}, [this]{ menuBarCallbackSaveFile(); });
@@ -863,7 +947,7 @@ void GuiBuilder::loadEditingScreen(const tgui::String& filename)
 
     const auto hierarchyWindow = m_gui->get<tgui::ChildWindow>("HierarchyWindow");
     m_widgetHierarchyTree = hierarchyWindow->get<tgui::TreeView>("WidgetsTree");
-    m_widgetHierarchyTree->onItemSelect([this](tgui::String name){
+    m_widgetHierarchyTree->onItemSelect([this](const tgui::String& name){
         if (!name.empty())
             m_selectedForm->selectWidgetByName(name);
     });
@@ -897,6 +981,7 @@ void GuiBuilder::loadToolbox()
         {"ProgressBar", []{ return tgui::ProgressBar::create(); }},
         {"RadioButton", []{ return tgui::RadioButton::create(); }},
         {"RangeSlider", []{ return tgui::RangeSlider::create(); }},
+        {"RichTextLabel", []{ return tgui::RichTextLabel::create("RichTextLabel"); }},
         {"ScrollablePanel", []{ return tgui::ScrollablePanel::create({150, 150}); }},
         {"Scrollbar", []{ return tgui::Scrollbar::create(); }},
         {"Slider", []{ return tgui::Slider::create(); }},
@@ -904,6 +989,7 @@ void GuiBuilder::loadToolbox()
         {"SpinControl", []{ return tgui::SpinControl::create(); }},
         {"Tabs", []{ auto tabs = tgui::Tabs::create(); tabs->add("Tab", false); return tabs; }},
         {"TextArea", []{ return tgui::TextArea::create(); }},
+        {"ToggleButton", []{ return tgui::ToggleButton::create(); }},
         {"TreeView", []{ return tgui::TreeView::create(); }},
     };
 
@@ -927,11 +1013,12 @@ void GuiBuilder::loadToolbox()
         verticalLayout->add(panel);
         toolbox->add(verticalLayout);
 
-        panel->onClick([=]{
+        panel->onClick([this,widget]{
+            saveUndoState(GuiBuilder::UndoType::CreateNew);
+
             createNewWidget(widget.second());
 
             auto selectedWidget = m_selectedForm->getSelectedWidget();
-
             auto renderer = m_themes[m_defaultTheme].getRendererNoThrow(selectedWidget->ptr->getWidgetType());
 
             // Although the white theme has an empty Picture renderer, the gui builder should not use it and display a placeholder image instead
@@ -959,13 +1046,13 @@ void GuiBuilder::loadToolbox()
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void GuiBuilder::createNewWidget(tgui::Widget::Ptr widget, tgui::Container* parent, bool selectNewWidget)
+void GuiBuilder::createNewWidget(const tgui::Widget::Ptr& widget, tgui::Container* parent, bool selectNewWidget)
 {
     if (!parent)
     {
         tgui::Widget::Ptr selectedWidget = m_selectedForm->getSelectedWidget() ? m_selectedForm->getSelectedWidget()->ptr : nullptr;
         if (selectedWidget && selectedWidget->isContainer())
-            parent = static_cast<tgui::Container*>(selectedWidget.get());
+            parent = dynamic_cast<tgui::Container*>(selectedWidget.get());
         else if (selectedWidget)
             parent = selectedWidget->getParent();
     }
@@ -1053,12 +1140,12 @@ void GuiBuilder::initProperties()
         rendererComboBox->setSelectedItem(selectedWidget->theme);
         m_propertiesContainer->add(rendererComboBox, "RendererSelectorComboBox");
 
-        rendererComboBox->onItemSelect([=](const tgui::String& item){
-            selectedWidget->theme = item;
+        rendererComboBox->onItemSelect([this,widget=selectedWidget.get()](const tgui::String& item){
+            widget->theme = item;
             if (item != "Custom")
-                selectedWidget->ptr->setRenderer(m_themes[item].getRendererNoThrow(selectedWidget->ptr->getWidgetType()));
+                widget->ptr->setRenderer(m_themes[item].getRendererNoThrow(widget->ptr->getWidgetType()));
             else
-                selectedWidget->ptr->setRenderer(selectedWidget->ptr->getRenderer()->getData());
+                widget->ptr->setRenderer(widget->ptr->getRenderer()->getData());
 
             m_selectedForm->setChanged(true);
             initProperties();
@@ -1087,7 +1174,7 @@ void GuiBuilder::addPropertyValueWidgets(float& topPosition, const PropertyValue
         propertyEditBox->setText(property);
         m_propertiesContainer->add(propertyEditBox, "Property" + property);
         propertyEditBox->setCaretPosition(0); // Show the first part of the contents instead of the last part when the text does not fit
-        propertyEditBox->onFocus([=]{ m_propertiesContainer->focusNextWidget(); });
+        propertyEditBox->onFocus([this]{ m_propertiesContainer->focusNextWidget(); });
     }
 
     if (type == "Bool")
@@ -1104,6 +1191,8 @@ void GuiBuilder::addPropertyValueWidgets(float& topPosition, const PropertyValue
         addPropertyValueStringList(property, value, onChange, topPosition);
     else if (type == "Texture")
         addPropertyValueTexture(property, value, onChange, topPosition);
+    else if (type == "ListViewColumns")
+        addPropertyListViewColumns(property, value, onChange, topPosition);
     else if (type == "EditBoxInputValidator")
         addPropertyValueEditBoxInputValidator(property, value, onChange, topPosition);
     else if (type == "ChildWindowTitleButtons")
@@ -1169,6 +1258,7 @@ void GuiBuilder::initSelectedWidgetComboBoxAfterLoad()
 
 void GuiBuilder::removeSelectedWidget()
 {
+    saveUndoState(GuiBuilder::UndoType::Delete);
     const auto selectedWidget = m_selectedForm->getSelectedWidget();
     assert(selectedWidget != nullptr);
 
@@ -1241,9 +1331,9 @@ void GuiBuilder::createNewForm(tgui::String filename)
         messageBox->setPosition("(&.size - size) / 2");
         m_gui->add(messageBox);
 
-        messageBox->onButtonPress([=](const tgui::String& button){
-            m_gui->remove(panel);
-            m_gui->remove(messageBox);
+        messageBox->onButtonPress([this,filename,panelPtr=panel.get(),messageBoxPtr=messageBox.get()](const tgui::String& button){
+            m_gui->remove(panelPtr->shared_from_this());
+            m_gui->remove(messageBoxPtr->shared_from_this());
 
             if (button == "Yes")
             {
@@ -1260,8 +1350,8 @@ void GuiBuilder::createNewForm(tgui::String filename)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool GuiBuilder::loadForm(tgui::String filename)
+// For load type, 0 for saved file load, 1 for undo save load
+bool GuiBuilder::loadForm(tgui::String filename, bool loadingFromFile)
 {
     // If the filename is an absolute path that contains the resource path then make it relative
     const tgui::String basePath = tgui::getResourcePath().getNormalForm().asString();
@@ -1276,7 +1366,18 @@ bool GuiBuilder::loadForm(tgui::String filename)
 
     try
     {
-        m_selectedForm->load();
+        if (loadingFromFile)
+        {
+            m_selectedForm->load();
+            m_undoSaves.clear(); // Reset undo saves
+            m_undoSavesDesc.clear(); // Reset undo saves
+        }
+        else
+        {
+            m_selectedForm->loadState(m_undoSaves.back());
+            m_undoSaves.pop_back();
+            m_undoSavesDesc.pop_back();
+        }
     }
     catch (const tgui::Exception& e)
     {
@@ -1288,7 +1389,7 @@ bool GuiBuilder::loadForm(tgui::String filename)
 
     // Try to match renderers with themes (this could create false positives but it is better than not being able to load themes at all)
     // Many cases are still unsupported (e.g. nested renderers), in which case the renderer will not be shared after loading
-    for (auto& widget : m_selectedForm->getWidgets())
+    for (const auto& widget : m_selectedForm->getWidgets())
     {
         for (auto& theme : m_themes)
         {
@@ -1328,7 +1429,7 @@ void GuiBuilder::displayErrorMessage(const tgui::String& error)
     messageBox->setPosition("(&.size - size) / 2");
     openWindowWithFocus(messageBox);
 
-    messageBox->onButtonPress([messageBox]{ messageBox->close(); });
+    messageBox->onButtonPress([messageBoxPtr=messageBox.get()]{ messageBoxPtr->close(); });
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1345,16 +1446,18 @@ tgui::ChildWindow::Ptr GuiBuilder::openWindowWithFocus(tgui::ChildWindow::Ptr wi
     window->setFocused(true);
 
     const bool tabUsageEnabled = m_gui->isTabKeyUsageEnabled();
-    auto closeWindow = [=]{
-        m_gui->remove(window);
-        m_gui->remove(panel);
+    auto closeWindow = [this,windowPtr=window.get(),panelPtr=panel.get(),tabUsageEnabled]{
+        m_gui->remove(windowPtr->shared_from_this());
+        m_gui->remove(panelPtr->shared_from_this());
         m_gui->setTabKeyUsageEnabled(tabUsageEnabled);
+        m_foregroundPanel = nullptr;
     };
 
     panel->onClick(closeWindow);
     window->onClose(closeWindow);
     window->onEscapeKeyPress(closeWindow);
 
+    m_foregroundPanel = panel;
     return window;
 }
 
@@ -1367,25 +1470,28 @@ tgui::String GuiBuilder::getDefaultFilename() const
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void GuiBuilder::copyWidgetRecursive(std::vector<CopiedWidget>& copiedWidgetList, std::shared_ptr<WidgetInfo> widgetInfo)
+void GuiBuilder::copyWidgetRecursive(std::vector<CopiedWidget>& copiedWidgetList, const std::shared_ptr<WidgetInfo>& widgetInfo)
 {
     CopiedWidget copiedWidget;
     copiedWidget.theme = widgetInfo->theme;
     copiedWidget.widget = widgetInfo->ptr->clone();
     copiedWidget.originalWidget = widgetInfo->ptr;
-    copiedWidget.widget->getRenderer(); // Make sure renderer isn't still shared
+    (void)copiedWidget.widget->getRenderer(); // Make sure renderer isn't still shared
 
     if (widgetInfo->ptr->isContainer())
     {
         const auto& container = widgetInfo->ptr->cast<tgui::Container>();
-        for (const auto& childWidget : container->getWidgets())
+        if (container) // Should aways be the case
         {
-            const auto& childWidgetInfo = m_selectedForm->getWidget(tgui::String::fromNumber(childWidget.get()));
-            copyWidgetRecursive(copiedWidget.childWidgets, childWidgetInfo);
-        }
+            for (const auto& childWidget : container->getWidgets())
+            {
+                const auto& childWidgetInfo = m_selectedForm->getWidget(tgui::String::fromNumber(childWidget.get()));
+                copyWidgetRecursive(copiedWidget.childWidgets, childWidgetInfo);
+            }
 
-        // Remove the widgets inside the container itself as we stored them separately
-        copiedWidget.widget->cast<tgui::Container>()->removeAllWidgets();
+            // Remove the widgets inside the container itself as we stored them separately
+            copiedWidget.widget->cast<tgui::Container>()->removeAllWidgets();
+        }
     }
 
     copiedWidgetList.push_back(std::move(copiedWidget));
@@ -1406,7 +1512,7 @@ void GuiBuilder::pasteWidgetRecursive(const CopiedWidget& copiedWidget, tgui::Co
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void GuiBuilder::copyWidgetToInternalClipboard(std::shared_ptr<WidgetInfo> widgetInfo)
+void GuiBuilder::copyWidgetToInternalClipboard(const std::shared_ptr<WidgetInfo>& widgetInfo)
 {
     m_copiedWidgets.clear();
     copyWidgetRecursive(m_copiedWidgets, widgetInfo);
@@ -1418,6 +1524,8 @@ void GuiBuilder::pasteWidgetFromInternalClipboard()
 {
     if (m_copiedWidgets.empty())
         return;
+
+    saveUndoState(GuiBuilder::UndoType::Paste);
 
     // When selecting a container and pressing ctrl+C immediately followed by ctrl+V, the the new container should be a sibling
     // of the old one, not a child. So don't try to paste a container inside itself.
@@ -1472,6 +1580,7 @@ tgui::EditBox::Ptr GuiBuilder::addPropertyValueEditBox(const tgui::String& prope
     const float scrollbarWidth = m_propertiesContainer->getScrollbarWidth();
 
     auto valueEditBox = m_propertiesContainer->get<tgui::EditBox>("Value" + property);
+
     if (!valueEditBox)
     {
         valueEditBox = tgui::EditBox::create();
@@ -1484,8 +1593,8 @@ tgui::EditBox::Ptr GuiBuilder::addPropertyValueEditBox(const tgui::String& prope
     valueEditBox->setPosition({(bindWidth(m_propertiesContainer) - scrollbarWidth) / 2.f, topPosition});
     valueEditBox->setSize({(bindWidth(m_propertiesContainer) - scrollbarWidth) / 2.f - rightPadding, EDIT_BOX_HEIGHT});
     valueEditBox->setText(value);
+    valueEditBox->onReturnOrUnfocus([onChange,editBox=valueEditBox.get()]{ onChange(editBox->getText()); });
 
-    valueEditBox->onReturnOrUnfocus([=]{ onChange(valueEditBox->getText()); });
     return valueEditBox;
 }
 
@@ -1501,7 +1610,7 @@ tgui::Button::Ptr GuiBuilder::addPropertyValueButtonMore(const tgui::String& pro
         buttonMore = tgui::Button::create();
         buttonMore->setText(L"\u22EF");
         buttonMore->setTextSize(18);
-        buttonMore->onFocus([=]{ m_propertiesContainer->focusNextWidget(); });
+        buttonMore->onFocus([this]{ m_propertiesContainer->focusNextWidget(); });
         m_propertiesContainer->add(buttonMore, "ValueButton" + property);
     }
 
@@ -1538,7 +1647,7 @@ void GuiBuilder::addPropertyValueBool(const tgui::String& property, const tgui::
     else
         valueComboBox->setSelectedItemByIndex(0);
 
-    valueComboBox->onItemSelect([=]{ onChange(valueComboBox->getSelectedItem()); });
+    valueComboBox->onItemSelect([onChange,comboBox=valueComboBox.get()]{ onChange(comboBox->getSelectedItem()); });
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1572,11 +1681,11 @@ void GuiBuilder::addPropertyValueColor(const tgui::String& property, const tgui:
         colorPreviewPanel->getRenderer()->setBackgroundColor(tgui::Color::Transparent);
 
     colorPreviewPanel->onClick.disconnectAll();
-    colorPreviewPanel->onClick([=]{
+    colorPreviewPanel->onClick([this,value,onChange]{
         const tgui::Color color = tgui::Deserializer::deserialize(tgui::ObjectConverter::Type::Color, value).getColor();
         auto colorPicker = tgui::ColorPicker::create("Select color", color);
         openWindowWithFocus(colorPicker);
-        colorPicker->onOkPress([=](tgui::Color newColor){
+        colorPicker->onOkPress([onChange](tgui::Color newColor){
             onChange(tgui::Serializer::serialize(newColor));
         });
     });
@@ -1589,7 +1698,7 @@ void GuiBuilder::addPropertyValueTextStyle(const tgui::String& property, const t
     addPropertyValueEditBox(property, value, onChange, topPosition, EDIT_BOX_HEIGHT - 1);
 
     auto buttonMore = addPropertyValueButtonMore(property, topPosition);
-    buttonMore->onPress([=]{
+    buttonMore->onPress([this,value,onChange]{
         auto textStyleWindow = openWindowWithFocus();
         textStyleWindow->setTitle("Set text style");
         textStyleWindow->setClientSize({180, 160});
@@ -1606,12 +1715,17 @@ void GuiBuilder::addPropertyValueTextStyle(const tgui::String& property, const t
         checkBoxUnderlined->setChecked((style & tgui::TextStyle::Underlined) != 0);
         checkBoxStrikeThrough->setChecked((style & tgui::TextStyle::StrikeThrough) != 0);
 
-        auto updateTextStyleProperty = [=]{
+        auto updateTextStyleProperty = [onChange,cbBold=checkBoxBold.get(),cbItalic=checkBoxItalic.get(),
+                                        cbUnderlined=checkBoxUnderlined.get(),cbStrikeThrough=checkBoxStrikeThrough.get()]{
             unsigned int newStyle = 0;
-            newStyle |= (checkBoxBold->isChecked() ? tgui::TextStyle::Bold : 0);
-            newStyle |= (checkBoxItalic->isChecked() ? tgui::TextStyle::Italic : 0);
-            newStyle |= (checkBoxUnderlined->isChecked() ? tgui::TextStyle::Underlined : 0);
-            newStyle |= (checkBoxStrikeThrough->isChecked() ? tgui::TextStyle::StrikeThrough : 0);
+            if (cbBold->isChecked())
+                newStyle |= tgui::TextStyle::Bold;
+            if (cbItalic->isChecked())
+                newStyle |= tgui::TextStyle::Italic;
+            if (cbUnderlined->isChecked())
+                newStyle |= tgui::TextStyle::Underlined;
+            if (cbStrikeThrough->isChecked())
+                newStyle |= tgui::TextStyle::StrikeThrough;
             onChange(tgui::Serializer::serialize(tgui::TextStyles{newStyle}));
         };
         checkBoxBold->onChange(updateTextStyleProperty);
@@ -1628,7 +1742,7 @@ void GuiBuilder::addPropertyValueOutline(const tgui::String& property, const tgu
     addPropertyValueEditBox(property, value, onChange, topPosition, EDIT_BOX_HEIGHT - 1);
 
     auto buttonMore = addPropertyValueButtonMore(property, topPosition);
-    buttonMore->onPress([=]{
+    buttonMore->onPress([this,value,onChange]{
         auto outlineWindow = openWindowWithFocus();
         outlineWindow->setTitle("Set outline");
         outlineWindow->setClientSize({150, 150});
@@ -1645,12 +1759,12 @@ void GuiBuilder::addPropertyValueOutline(const tgui::String& property, const tgu
         editRight->setText(tgui::String::fromNumber(outline.getRight()));
         editBottom->setText(tgui::String::fromNumber(outline.getBottom()));
 
-        auto updateOutlineProperty = [=]{
+        auto updateOutlineProperty = [onChange,ebLeft=editLeft.get(),ebTop=editTop.get(),ebRight=editRight.get(),ebBottom=editBottom.get()]{
             const tgui::Outline newOutline{
-                tgui::AbsoluteOrRelativeValue{editLeft->getText()},
-                tgui::AbsoluteOrRelativeValue{editTop->getText()},
-                tgui::AbsoluteOrRelativeValue{editRight->getText()},
-                tgui::AbsoluteOrRelativeValue{editBottom->getText()},
+                tgui::AbsoluteOrRelativeValue{ebLeft->getText()},
+                tgui::AbsoluteOrRelativeValue{ebTop->getText()},
+                tgui::AbsoluteOrRelativeValue{ebRight->getText()},
+                tgui::AbsoluteOrRelativeValue{ebBottom->getText()},
             };
             onChange(tgui::Serializer::serialize(newOutline));
         };
@@ -1668,7 +1782,7 @@ void GuiBuilder::addPropertyValueMultilineString(const tgui::String& property, c
     addPropertyValueEditBox(property, value, onChange, topPosition, EDIT_BOX_HEIGHT - 1);
 
     auto buttonMore = addPropertyValueButtonMore(property, topPosition);
-    buttonMore->onPress([=]{
+    buttonMore->onPress([this,value,onChange]{
         auto multilineStringWindow = openWindowWithFocus();
         multilineStringWindow->setTitle("Set multiline text");
         multilineStringWindow->setClientSize({470, 220});
@@ -1676,7 +1790,7 @@ void GuiBuilder::addPropertyValueMultilineString(const tgui::String& property, c
 
         auto textArea = multilineStringWindow->get<tgui::TextArea>("TextArea");
         textArea->setText(tgui::Deserializer::deserialize(tgui::ObjectConverter::Type::String, value).getString());
-        textArea->onTextChange([=]{ onChange(tgui::Serializer::serialize(textArea->getText())); });
+        textArea->onTextChange([onChange,textAreaPtr=textArea.get()]{ onChange(tgui::Serializer::serialize(textAreaPtr->getText())); });
         textArea->setFocused(true);
 
         m_gui->setTabKeyUsageEnabled(false);
@@ -1689,14 +1803,14 @@ void GuiBuilder::addPropertyValueStringList(const tgui::String& property, const 
 {
     addPropertyValueEditBox(property, value, onChange, topPosition, EDIT_BOX_HEIGHT - 1);
 
-    auto setArrowColor = [](tgui::BitmapButton::Ptr button, tgui::Color color){
+    auto setArrowColor = [](const tgui::BitmapButton::Ptr& button, const tgui::Color& color){
         tgui::Texture texture = button->getImage();
         texture.setColor(color);
         button->setImage(texture);
     };
 
     auto buttonMore = addPropertyValueButtonMore(property, topPosition);
-    buttonMore->onPress([=]{
+    buttonMore->onPress([this,value,onChange,setArrowColor]{
         auto stringListWindow = openWindowWithFocus();
         stringListWindow->setTitle("Set string list");
         stringListWindow->setClientSize({352, 215});
@@ -1719,79 +1833,82 @@ void GuiBuilder::addPropertyValueStringList(const tgui::String& property, const 
         buttonArrowUp->setEnabled(false);
         buttonArrowDown->setEnabled(false);
 
-        listBox->onItemSelect([=]{
-            const int index = listBox->getSelectedItemIndex();
+        listBox->onItemSelect([setArrowColor,lb=listBox.get(),eb=editBox.get(),btnRemove=buttonRemove.get(),btnUp=buttonArrowUp.get(),btnDown=buttonArrowDown.get()]{
+            const int index = lb->getSelectedItemIndex();
             if (index >= 0)
-                buttonRemove->setEnabled(true);
+            {
+                btnRemove->setEnabled(true);
+                eb->setText(lb->getSelectedItem());
+            }
             else
-                buttonRemove->setEnabled(false);
+                btnRemove->setEnabled(false);
 
             if (index > 0)
             {
-                setArrowColor(buttonArrowUp, buttonArrowUp->getSharedRenderer()->getTextColor());
-                buttonArrowUp->setEnabled(true);
+                setArrowColor(btnUp->cast<tgui::BitmapButton>(), btnUp->getSharedRenderer()->getTextColor());
+                btnUp->setEnabled(true);
             }
             else
             {
-                setArrowColor(buttonArrowUp, buttonArrowUp->getSharedRenderer()->getTextColorDisabled());
-                buttonArrowUp->setEnabled(false);
+                setArrowColor(btnUp->cast<tgui::BitmapButton>(), btnUp->getSharedRenderer()->getTextColorDisabled());
+                btnUp->setEnabled(false);
             }
 
-            if ((index >= 0) && (static_cast<std::size_t>(index) + 1 < listBox->getItemCount()))
+            if ((index >= 0) && (static_cast<std::size_t>(index) + 1 < lb->getItemCount()))
             {
-                setArrowColor(buttonArrowDown, buttonArrowUp->getSharedRenderer()->getTextColor());
-                buttonArrowDown->setEnabled(true);
+                setArrowColor(btnDown->cast<tgui::BitmapButton>(), btnUp->getSharedRenderer()->getTextColor());
+                btnDown->setEnabled(true);
             }
             else
             {
-                setArrowColor(buttonArrowDown, buttonArrowUp->getSharedRenderer()->getTextColorDisabled());
-                buttonArrowDown->setEnabled(false);
+                setArrowColor(btnDown->cast<tgui::BitmapButton>(), btnUp->getSharedRenderer()->getTextColorDisabled());
+                btnDown->setEnabled(false);
             }
         });
 
-        auto updateValue = [=]{
-            onChange(WidgetProperties::serializeList(listBox->getItems()));
+        auto updateValue = [onChange,lb=listBox.get()]{
+            onChange(WidgetProperties::serializeList(lb->getItems()));
         };
 
-        buttonArrowUp->onPress([=]{
-            const std::size_t index = static_cast<std::size_t>(listBox->getSelectedItemIndex());
-            tgui::String value1 = listBox->getItemByIndex(index - 1);
-            tgui::String value2 = listBox->getItemByIndex(index);
-            listBox->changeItemByIndex(index - 1, value2);
-            listBox->changeItemByIndex(index, value1);
-            listBox->setSelectedItemByIndex(index - 1);
+        buttonArrowUp->onPress([updateValue,lb=listBox.get()]{
+            const std::size_t index = static_cast<std::size_t>(lb->getSelectedItemIndex());
+            tgui::String value1 = lb->getItemByIndex(index - 1);
+            tgui::String value2 = lb->getItemByIndex(index);
+            lb->changeItemByIndex(index - 1, value2);
+            lb->changeItemByIndex(index, value1);
+            lb->setSelectedItemByIndex(index - 1);
             updateValue();
         });
 
-        buttonArrowDown->onPress([=]{
-            const std::size_t index = static_cast<std::size_t>(listBox->getSelectedItemIndex());
-            tgui::String value1 = listBox->getItemByIndex(index);
-            tgui::String value2 = listBox->getItemByIndex(index + 1);
-            listBox->changeItemByIndex(index, value2);
-            listBox->changeItemByIndex(index + 1, value1);
-            listBox->setSelectedItemByIndex(index + 1);
+        buttonArrowDown->onPress([updateValue,lb=listBox.get()]{
+            const std::size_t index = static_cast<std::size_t>(lb->getSelectedItemIndex());
+            tgui::String value1 = lb->getItemByIndex(index);
+            tgui::String value2 = lb->getItemByIndex(index + 1);
+            lb->changeItemByIndex(index, value2);
+            lb->changeItemByIndex(index + 1, value1);
+            lb->setSelectedItemByIndex(index + 1);
             updateValue();
         });
 
-        buttonRemove->onPress([=]{
-            const std::size_t index = static_cast<std::size_t>(listBox->getSelectedItemIndex());
-            listBox->removeItemByIndex(index);
-            if (listBox->getItemCount() > 0)
+        buttonRemove->onPress([updateValue,lb=listBox.get()]{
+            const std::size_t index = static_cast<std::size_t>(lb->getSelectedItemIndex());
+            lb->removeItemByIndex(index);
+            if (lb->getItemCount() > 0)
             {
-                if (index == listBox->getItemCount())
-                    listBox->setSelectedItemByIndex(index - 1);
+                if (index == lb->getItemCount())
+                    lb->setSelectedItemByIndex(index - 1);
                 else
-                    listBox->setSelectedItemByIndex(index);
+                    lb->setSelectedItemByIndex(index);
             }
 
             updateValue();
         });
 
-        auto addItem = [=]{
-            listBox->addItem(editBox->getText());
-            listBox->setSelectedItemByIndex(listBox->getItemCount() - 1);
-            editBox->setText("");
-            editBox->setFocused(true);
+        auto addItem = [updateValue,lb=listBox.get(),eb=editBox.get()]{
+            lb->addItem(eb->getText());
+            lb->setSelectedItemByIndex(lb->getItemCount() - 1);
+            eb->setText("");
+            eb->setFocused(true);
             updateValue();
         };
         buttonAdd->onPress(addItem);
@@ -1806,7 +1923,7 @@ void GuiBuilder::addPropertyValueTexture(const tgui::String& property, const tgu
     addPropertyValueEditBox(property, value, onChange, topPosition, EDIT_BOX_HEIGHT - 1);
 
     auto buttonMore = addPropertyValueButtonMore(property, topPosition);
-    buttonMore->onPress([=]{
+    buttonMore->onPress([this,value,onChange]{
         auto textureWindow = openWindowWithFocus();
         textureWindow->setTitle("Set texture");
         textureWindow->setClientSize({235, 250});
@@ -1834,10 +1951,13 @@ void GuiBuilder::addPropertyValueTexture(const tgui::String& property, const tgu
 
         previewPicture->setUserData(std::make_shared<tgui::Texture>());
 
-        auto separators = std::make_shared<std::vector<tgui::SeparatorLine::Ptr>>();
+        auto separators = std::make_shared<std::vector<tgui::SeparatorLine*>>();
 
-        auto updateForm = [=](tgui::String filename, tgui::UIntRect partRect, tgui::UIntRect middleRect, bool smooth, bool resetPartRect, bool resetMiddleRect, bool resetSmooth){
-            auto texture = previewPicture->getUserData<std::shared_ptr<tgui::Texture>>();
+        auto updateForm = [this,onChange,separators,window=textureWindow.get(),picPreview=previewPicture.get(),btnSelect=buttonSelectFile.get(),
+                           ebPart=editBoxPartRect.get(),ebMiddle=editBoxMiddleRect.get(),cbSmooth=checkBoxSmooth.get()]
+                          (const tgui::String& filename, tgui::UIntRect partRect, tgui::UIntRect middleRect,
+                           bool smooth, bool resetPartRect, bool resetMiddleRect, bool resetSmooth){
+            auto texture = picPreview->getUserData<std::shared_ptr<tgui::Texture>>();
 
             try
             {
@@ -1848,46 +1968,46 @@ void GuiBuilder::addPropertyValueTexture(const tgui::String& property, const tgu
             {
             }
 
-            buttonSelectFile->setUserData(filename); // Not using texture.getId() as it would be empty if file didn't exist
+            btnSelect->setUserData(filename); // Not using texture.getId() as it would be empty if file didn't exist
 
             const tgui::Vector2u imageSize = texture->getImageSize();
             const tgui::Vector2f extraSpace{20, 180};
             const tgui::Vector2f minSize{235, 165};
             const tgui::Layout2d maxSize{tgui::bindWidth(*m_gui) - 50, tgui::bindHeight(*m_gui) - 50};
             const tgui::Layout scaling = tgui::bindMin(1.f, tgui::bindMin((maxSize.x - extraSpace.x) / imageSize.x, (maxSize.y - extraSpace.y) / imageSize.y));
-            previewPicture->setSize({imageSize.x * scaling, imageSize.y * scaling});
-            textureWindow->setSize({tgui::bindMax(minSize.x, (imageSize.x * scaling) + extraSpace.x), tgui::bindMax(minSize.y, (imageSize.y * scaling) + extraSpace.y)});
+            picPreview->setSize({imageSize.x * scaling, imageSize.y * scaling});
+            window->setSize({tgui::bindMax(minSize.x, (imageSize.x * scaling) + extraSpace.x), tgui::bindMax(minSize.y, (imageSize.y * scaling) + extraSpace.y)});
 
             if (resetPartRect)
             {
                 partRect = texture->getPartRect();
-                editBoxPartRect->onTextChange.setEnabled(false);
-                editBoxPartRect->setText("(" + tgui::String::fromNumber(partRect.left) + ", " + tgui::String::fromNumber(partRect.top)
+                ebPart->onTextChange.setEnabled(false);
+                ebPart->setText("(" + tgui::String::fromNumber(partRect.left) + ", " + tgui::String::fromNumber(partRect.top)
                     + ", " + tgui::String::fromNumber(partRect.width) + ", " + tgui::String::fromNumber(partRect.height) + ")");
-                editBoxPartRect->onTextChange.setEnabled(true);
+                ebPart->onTextChange.setEnabled(true);
             }
 
             if (resetMiddleRect)
             {
                 middleRect = texture->getMiddleRect();
 
-                editBoxMiddleRect->onTextChange.setEnabled(false);
-                editBoxMiddleRect->setText("(" + tgui::String::fromNumber(middleRect.left) + ", " + tgui::String::fromNumber(middleRect.top)
+                ebMiddle->onTextChange.setEnabled(false);
+                ebMiddle->setText("(" + tgui::String::fromNumber(middleRect.left) + ", " + tgui::String::fromNumber(middleRect.top)
                     + ", " + tgui::String::fromNumber(middleRect.width) + ", " + tgui::String::fromNumber(middleRect.height) + ")");
-                editBoxMiddleRect->onTextChange.setEnabled(true);
+                ebMiddle->onTextChange.setEnabled(true);
             }
 
             if (resetSmooth)
             {
-                checkBoxSmooth->onChange.setEnabled(false);
-                checkBoxSmooth->setChecked(texture->isSmooth());
-                checkBoxSmooth->onChange.setEnabled(true);
+                cbSmooth->onChange.setEnabled(false);
+                cbSmooth->setChecked(texture->isSmooth());
+                cbSmooth->onChange.setEnabled(true);
             }
 
-            previewPicture->getRenderer()->setTexture(*texture);
+            picPreview->getRenderer()->setTexture(*texture);
 
             for (auto& separator : *separators)
-                textureWindow->remove(separator);
+                window->remove(separator->shared_from_this());
             separators->clear();
 
             if ((middleRect != tgui::UIntRect{}) && (middleRect != tgui::UIntRect{0, 0, imageSize.x, imageSize.y}))
@@ -1911,26 +2031,26 @@ void GuiBuilder::addPropertyValueTexture(const tgui::String& property, const tgu
                 for (const auto& line : lines)
                 {
                     auto separator = tgui::SeparatorLine::create();
-                    separator->setPosition(previewPicture->getPosition() + line.first);
+                    separator->setPosition(picPreview->getPosition() + line.first);
                     separator->setSize(std::max(line.second.x - line.first.x, 1.f), std::max(line.second.y - line.first.y, 1.f));
                     separator->getRenderer()->setColor({255, 128, 255});
-                    textureWindow->add(separator);
-                    separators->push_back(separator);
+                    window->add(separator);
+                    separators->push_back(separator.get());
                 }
             }
         };
 
-        editBoxPartRect->onTextChange([=]{
-            updateForm(buttonSelectFile->getUserData<tgui::String>(), deserializeRect(editBoxPartRect->getText()),
-                       {}, checkBoxSmooth->isChecked(), false, true, false);
+        editBoxPartRect->onTextChange([=,btnSel=buttonSelectFile.get(),ebPart=editBoxPartRect.get(),cbSmooth=checkBoxSmooth.get()]{
+            updateForm(btnSel->getUserData<tgui::String>(), deserializeRect(ebPart->getText()),
+                       {}, cbSmooth->isChecked(), false, true, false);
         });
-        editBoxMiddleRect->onTextChange([=]{
-            updateForm(buttonSelectFile->getUserData<tgui::String>(), deserializeRect(editBoxPartRect->getText()),
-                       deserializeRect(editBoxMiddleRect->getText()), checkBoxSmooth->isChecked(), false, false, false);
+        editBoxMiddleRect->onTextChange([=,btnSel=buttonSelectFile.get(),ebPart=editBoxPartRect.get(),ebMiddle=editBoxMiddleRect.get(),cbSmooth=checkBoxSmooth.get()]{
+            updateForm(btnSel->getUserData<tgui::String>(), deserializeRect(ebPart->getText()),
+                       deserializeRect(ebMiddle->getText()), cbSmooth->isChecked(), false, false, false);
         });
-        checkBoxSmooth->onChange([=]{
-            updateForm(buttonSelectFile->getUserData<tgui::String>(), deserializeRect(editBoxPartRect->getText()),
-                       deserializeRect(editBoxMiddleRect->getText()), checkBoxSmooth->isChecked(), false, false, false);
+        checkBoxSmooth->onChange([=,btnSel=buttonSelectFile.get(),ebPart=editBoxPartRect.get(),ebMiddle=editBoxMiddleRect.get(),cbSmooth=checkBoxSmooth.get()]{
+            updateForm(btnSel->getUserData<tgui::String>(), deserializeRect(ebPart->getText()),
+                       deserializeRect(ebMiddle->getText()), cbSmooth->isChecked(), false, false, false);
         });
 
         tgui::Texture originalTexture;
@@ -1950,11 +2070,157 @@ void GuiBuilder::addPropertyValueTexture(const tgui::String& property, const tgu
         const bool originalSmooth = originalTexture.isSmooth();
         updateForm(originalFilename, originalPartRect, originalMiddleRect, originalSmooth, true, true, true);
 
-        buttonSelectFile->onPress([=]{
-            showLoadFileWindow("Load image", "Load", true, buttonSelectFile->getUserData<tgui::String>(), [=](const tgui::String& filename){
-                updateForm(filename, {}, {}, checkBoxSmooth->isChecked(), true, true, false);
-            });
+        buttonSelectFile->onPress([this,updateForm,btnSelect=buttonSelectFile.get(),cbSmooth=checkBoxSmooth.get()]{
+            showLoadFileWindow("Load image", "Load", false, true, btnSelect->getUserData<tgui::String>(),
+                [updateForm,cbSmooth](const tgui::String& filename){
+                    updateForm(filename, {}, {}, cbSmooth->isChecked(), true, true, false);
+                });
         });
+    });
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void GuiBuilder::addPropertyListViewColumns(const tgui::String& property, const tgui::String& value, const OnValueChangeFunc& onChange, float topPosition)
+{
+    addPropertyValueEditBox(property, value, onChange, topPosition, EDIT_BOX_HEIGHT - 1);
+
+    auto setArrowColor = [](const tgui::BitmapButton::Ptr& button, const tgui::Color& color){
+        tgui::Texture texture = button->getImage();
+        texture.setColor(color);
+        button->setImage(texture);
+    };
+
+    auto buttonMore = addPropertyValueButtonMore(property, topPosition);
+    buttonMore->onPress([this,value,onChange,setArrowColor]{
+        auto stringListWindow = openWindowWithFocus();
+        stringListWindow->setTitle("Set columns");
+        stringListWindow->setClientSize({423, 312});
+        stringListWindow->loadWidgetsFromFile("resources/forms/SetListViewColumns.txt");
+
+        auto listView = stringListWindow->get<tgui::ListView>("ListView");
+        auto editCaption = stringListWindow->get<tgui::EditBox>("EditCaption");
+        auto spinWidth = stringListWindow->get<tgui::SpinControl>("SpinWidth");
+        auto comboBoxAlignment = stringListWindow->get<tgui::ComboBox>("ComboBoxAlignment");
+        auto buttonAdd = stringListWindow->get<tgui::Button>("BtnAdd");
+        auto buttonReplace = stringListWindow->get<tgui::Button>("BtnReplace");
+        auto buttonRemove = stringListWindow->get<tgui::Button>("BtnRemove");
+        auto buttonArrowUp = stringListWindow->get<tgui::BitmapButton>("BtnArrowUp");
+        auto buttonArrowDown = stringListWindow->get<tgui::BitmapButton>("BtnArrowDown");
+
+        auto serializedColumns = WidgetProperties::deserializeList(value);
+        for (const auto& serializedColumn : serializedColumns)
+        {
+            tgui::String text;
+            float width;
+            tgui::ListView::ColumnAlignment alignment;
+            if (ListViewProperties::deserializeColumn(serializedColumn, text, width, alignment))
+                listView->addItem({text, tgui::Serializer::serialize(width), ListViewProperties::serializeColumnAlignment(alignment)});
+        }
+
+        setArrowColor(buttonArrowUp, buttonArrowUp->getSharedRenderer()->getTextColorDisabled());
+        setArrowColor(buttonArrowDown, buttonArrowDown->getSharedRenderer()->getTextColorDisabled());
+        buttonRemove->setEnabled(false);
+        buttonArrowUp->setEnabled(false);
+        buttonArrowDown->setEnabled(false);
+
+        listView->onItemSelect([setArrowColor,lv=listView.get(),ebCaption=editCaption.get(),scWidth=spinWidth.get(),cbAlign=comboBoxAlignment.get(),btnReplace=buttonReplace.get(),btnRemove=buttonRemove.get(),btnUp=buttonArrowUp.get(),btnDown=buttonArrowDown.get()]{
+            const int index = lv->getSelectedItemIndex();
+            if (index >= 0)
+            {
+                btnRemove->setEnabled(true);
+                btnReplace->setEnabled(true);
+
+                const std::vector<tgui::String>& selectedItem = lv->getItemRow(static_cast<std::size_t>(index));
+                ebCaption->setText(selectedItem[0]);
+                scWidth->setValue(tgui::Deserializer::deserialize(tgui::ObjectConverter::Type::Number, selectedItem[1]).getNumber());
+                cbAlign->setSelectedItem(selectedItem[2]);
+            }
+            else
+            {
+                btnRemove->setEnabled(false);
+                btnReplace->setEnabled(false);
+            }
+
+            if (index > 0)
+            {
+                setArrowColor(btnUp->cast<tgui::BitmapButton>(), btnUp->getSharedRenderer()->getTextColor());
+                btnUp->setEnabled(true);
+            }
+            else
+            {
+                setArrowColor(btnUp->cast<tgui::BitmapButton>(), btnUp->getSharedRenderer()->getTextColorDisabled());
+                btnUp->setEnabled(false);
+            }
+
+            if ((index >= 0) && (static_cast<std::size_t>(index) + 1 < lv->getItemCount()))
+            {
+                setArrowColor(btnDown->cast<tgui::BitmapButton>(), btnUp->getSharedRenderer()->getTextColor());
+                btnDown->setEnabled(true);
+            }
+            else
+            {
+                setArrowColor(btnDown->cast<tgui::BitmapButton>(), btnUp->getSharedRenderer()->getTextColorDisabled());
+                btnDown->setEnabled(false);
+            }
+        });
+
+        auto updateValue = [onChange,lv=listView.get()]{
+            std::vector<tgui::String> newSerializedColumns;
+            for (std::size_t i = 0; i < lv->getItemCount(); ++i)
+            {
+                const std::vector<tgui::String> item = lv->getItemRow(i);
+                newSerializedColumns.emplace_back('(' + tgui::Serializer::serialize(item[0]) + ',' + item[1] + ',' + item[2] + ')');
+            }
+            onChange(WidgetProperties::serializeList(newSerializedColumns));
+        };
+
+        buttonArrowUp->onPress([updateValue,lv=listView.get()]{
+            const std::size_t index = static_cast<std::size_t>(lv->getSelectedItemIndex());
+            std::vector<tgui::String> value1 = lv->getItemRow(index - 1);
+            std::vector<tgui::String> value2 = lv->getItemRow(index);
+            lv->changeItem(index - 1, value2);
+            lv->changeItem(index, value1);
+            lv->setSelectedItem(index - 1);
+            updateValue();
+        });
+
+        buttonArrowDown->onPress([updateValue,lv=listView.get()]{
+            const std::size_t index = static_cast<std::size_t>(lv->getSelectedItemIndex());
+            std::vector<tgui::String> value1 = lv->getItemRow(index);
+            std::vector<tgui::String> value2 = lv->getItemRow(index + 1);
+            lv->changeItem(index, value2);
+            lv->changeItem(index + 1, value1);
+            lv->setSelectedItem(index + 1);
+            updateValue();
+        });
+
+        buttonRemove->onPress([updateValue,lv=listView.get()]{
+            const std::size_t index = static_cast<std::size_t>(lv->getSelectedItemIndex());
+            lv->removeItem(index);
+            if (lv->getItemCount() > 0)
+            {
+                if (index == lv->getItemCount())
+                    lv->setSelectedItem(index - 1);
+                else
+                    lv->setSelectedItem(index);
+            }
+
+            updateValue();
+        });
+
+        buttonReplace->onPress([updateValue,lv=listView.get(),ebCaption=editCaption.get(),scWidth=spinWidth.get(),cbAlign=comboBoxAlignment.get()]{
+            const std::size_t index = static_cast<std::size_t>(lv->getSelectedItemIndex());
+            lv->changeItem(index, {ebCaption->getText(), tgui::Serializer::serialize(scWidth->getValue()), cbAlign->getSelectedItem()});
+            updateValue();
+        });
+
+        auto addItem = [updateValue,lv=listView.get(),ebCaption=editCaption.get(),scWidth=spinWidth.get(),cbAlign=comboBoxAlignment.get()]{
+            lv->addItem({ebCaption->getText(), tgui::Serializer::serialize(scWidth->getValue()), cbAlign->getSelectedItem()});
+            lv->setSelectedItem(lv->getItemCount() - 1);
+            updateValue();
+        };
+        buttonAdd->onPress(addItem);
     });
 }
 
@@ -1965,7 +2231,7 @@ void GuiBuilder::addPropertyValueEditBoxInputValidator(const tgui::String& prope
     addPropertyValueEditBox(property, value, onChange, topPosition, EDIT_BOX_HEIGHT - 1);
 
     auto buttonMore = addPropertyValueButtonMore(property, topPosition);
-    buttonMore->onPress([=]{
+    buttonMore->onPress([this,value,onChange]{
         auto outlineWindow = openWindowWithFocus();
         outlineWindow->setTitle("Set accepted input");
         outlineWindow->setClientSize({190, 215});
@@ -1991,15 +2257,15 @@ void GuiBuilder::addPropertyValueEditBoxInputValidator(const tgui::String& prope
 
         editValidator->setText(value);
 
-        auto updateCustomValidator = [=]{
-            checkCustom->setChecked(true);
-            onChange(editValidator->getText());
+        auto updateCustomValidator = [onChange,cbCustom=checkCustom.get(),ebValid=editValidator.get()]{
+            cbCustom->setChecked(true);
+            onChange(ebValid->getText());
         };
-        auto updateValidator = [=](const tgui::String& newValue){
-            editValidator->onReturnKeyPress.disconnectAll();
-            editValidator->onUnfocus.disconnectAll();
-            editValidator->setText(newValue);
-            editValidator->onReturnOrUnfocus(updateCustomValidator);
+        auto updateValidator = [onChange,updateCustomValidator,ebValid=editValidator.get()](const tgui::String& newValue){
+            ebValid->onReturnKeyPress.disconnectAll();
+            ebValid->onUnfocus.disconnectAll();
+            ebValid->setText(newValue);
+            ebValid->onReturnOrUnfocus(updateCustomValidator);
             onChange(newValue);
         };
         checkAny->onCheck([=]{ updateValidator(tgui::EditBox::Validator::All); });
@@ -2017,7 +2283,7 @@ void GuiBuilder::addPropertyValueChildWindowTitleButtons(const tgui::String& pro
     addPropertyValueEditBox(property, value, onChange, topPosition, EDIT_BOX_HEIGHT - 1);
 
     auto buttonMore = addPropertyValueButtonMore(property, topPosition);
-    buttonMore->onPress([=]{
+    buttonMore->onPress([this,value,onChange]{
         auto titleButtonWindow = openWindowWithFocus();
         titleButtonWindow->setTitle("Set title buttons");
         titleButtonWindow->setClientSize({125, 125});
@@ -2038,13 +2304,13 @@ void GuiBuilder::addPropertyValueChildWindowTitleButtons(const tgui::String& pro
                 checkMinimize->setChecked(true);
         }
 
-        auto updateTitleButtons = [=]{
+        auto updateTitleButtons = [onChange,cbMin=checkMinimize.get(),cbMax=checkMaximize.get(),cbClose=checkClose.get()]{
             tgui::String newValue;
-            if (checkMinimize->isChecked())
+            if (cbMin->isChecked())
                 newValue += " | Minimize";
-            if (checkMaximize->isChecked())
+            if (cbMax->isChecked())
                 newValue += " | Maximize";
-            if (checkClose->isChecked())
+            if (cbClose->isChecked())
                 newValue += " | Close";
 
             if (!newValue.empty())
@@ -2089,7 +2355,7 @@ void GuiBuilder::addPropertyValueEnum(const tgui::String& property, const tgui::
             valueComboBox->setSelectedItemByIndex(i);
     }
 
-    valueComboBox->onItemSelect([=]{ onChange(valueComboBox->getSelectedItem()); });
+    valueComboBox->onItemSelect([onChange,comboBox=valueComboBox.get()]{ onChange(comboBox->getSelectedItem()); });
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2098,7 +2364,7 @@ void GuiBuilder::menuBarCallbackNewForm()
 {
     loadStartScreen();
 
-    showLoadFileWindow("New form", "Create", false, getDefaultFilename(), [=](const tgui::String& filename){
+    showLoadFileWindow("New form", "Create", true, false, getDefaultFilename(), [this](const tgui::String& filename){
         createNewForm(filename);
     });
 }
@@ -2109,7 +2375,7 @@ void GuiBuilder::menuBarCallbackLoadForm()
 {
     loadStartScreen();
 
-    showLoadFileWindow("Load form", "Load", true, getDefaultFilename(), [this](const tgui::String& filename){
+    showLoadFileWindow("Load form", "Load", false, true, getDefaultFilename(), [this](const tgui::String& filename){
         loadForm(filename);
     });
 }
@@ -2154,6 +2420,7 @@ void GuiBuilder::menuBarCallbackEditThemes()
 
     auto buttonAdd = editThemesWindow->get<tgui::Button>("ButtonAdd");
     auto buttonDelete = editThemesWindow->get<tgui::Button>("ButtonDelete");
+    auto buttonBrowse = editThemesWindow->get<tgui::Button>("ButtonBrowse");
     auto newThemeEditBox = editThemesWindow->get<tgui::EditBox>("NewThemeEditBox");
     auto themesList = editThemesWindow->get<tgui::ListBox>("ThemesList");
 
@@ -2164,28 +2431,30 @@ void GuiBuilder::menuBarCallbackEditThemes()
             themesList->addItem(theme.second.getPrimary());
     }
 
-    themesList->onItemSelect([=](tgui::String item){
+    themesList->onItemSelect([btnDel=buttonDelete.get(),ebNew=newThemeEditBox.get()](const tgui::String& item){
         if (item.empty())
-            buttonDelete->setEnabled(false);
+            btnDel->setEnabled(false);
         else
-            buttonDelete->setEnabled(true);
+            btnDel->setEnabled(true);
+
+        ebNew->setText(item);
     });
 
-    newThemeEditBox->onTextChange([=](tgui::String text){
+    newThemeEditBox->onTextChange([btnAdd=buttonAdd.get()](const tgui::String& text){
         if (text.empty())
-            buttonAdd->setEnabled(false);
+            btnAdd->setEnabled(false);
         else
-            buttonAdd->setEnabled(true);
+            btnAdd->setEnabled(true);
     });
 
-    buttonAdd->onPress([=]{
+    buttonAdd->onPress([this,ebNew=newThemeEditBox.get(),lbThemes=themesList.get()]{
         try
         {
-            const tgui::String filename = newThemeEditBox->getText();
-            if (!themesList->contains(filename))
+            const tgui::String filename = ebNew->getText();
+            if (!lbThemes->contains(filename))
             {
                 tgui::Theme theme{(tgui::getResourcePath() / filename).asString()};
-                themesList->addItem(filename);
+                lbThemes->addItem(filename);
                 m_themes[filename] = theme;
             }
         }
@@ -2198,13 +2467,30 @@ void GuiBuilder::menuBarCallbackEditThemes()
         saveGuiBuilderState();
     });
 
-    buttonDelete->onPress([=]{
-        auto item = themesList->getSelectedItem();
+    buttonDelete->onPress([this,btnDel=buttonDelete.get(),lbThemes=themesList.get()]{
+        auto item = lbThemes->getSelectedItem();
         m_themes.erase(item);
-        themesList->removeItem(item);
-        buttonDelete->setEnabled(false);
+        lbThemes->removeItem(item);
+        btnDel->setEnabled(false);
         initProperties();
         saveGuiBuilderState();
+    });
+
+    buttonBrowse->onPress([this,ebNew=newThemeEditBox.get()]{
+        auto fileDialog = tgui::FileDialog::create("Select theme file", "Select");
+        fileDialog->setFileMustExist(true);
+
+        if (!ebNew->getText().empty())
+        {
+            const auto inputPath = tgui::Filesystem::Path(ebNew->getText());
+            fileDialog->setPath((tgui::getResourcePath() / inputPath).getParentPath().getNormalForm());
+            fileDialog->setFilename(inputPath.getFilename());
+        }
+        openWindowWithFocus(fileDialog);
+
+        fileDialog->onFileSelect([ebNew](const tgui::String& selectedFile){
+            ebNew->setText(selectedFile);
+        });
     });
 }
 
@@ -2212,6 +2498,7 @@ void GuiBuilder::menuBarCallbackEditThemes()
 
 void GuiBuilder::menuBarCallbackBringWidgetToFront()
 {
+    saveUndoState(GuiBuilder::UndoType::SendtoFront);
     m_selectedForm->getSelectedWidget()->ptr->moveToFront();
     m_selectedForm->setChanged(true);
 
@@ -2222,6 +2509,7 @@ void GuiBuilder::menuBarCallbackBringWidgetToFront()
 
 void GuiBuilder::menuBarCallbackSendWidgetToBack()
 {
+    saveUndoState(GuiBuilder::UndoType::SendtoBack);
     m_selectedForm->getSelectedWidget()->ptr->moveToBack();
     m_selectedForm->setChanged(true);
 
@@ -2277,6 +2565,7 @@ void GuiBuilder::updateSelectedWidgetHierarchy()
             if (nodeList.back().text == m_selectedForm->getSelectedWidget()->name)
             {
                 std::vector<tgui::String> hierarchy;
+                hierarchy.reserve(nodeList.size());
                 for (const auto& node : nodeList)
                     hierarchy.push_back(node.text);
 
@@ -2299,7 +2588,7 @@ void GuiBuilder::updateSelectedWidgetHierarchy()
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void GuiBuilder::fillWidgetHierarchyTreeRecursively(std::vector<tgui::String>& hierarchy, std::shared_ptr<tgui::Widget> parentWidget)
+void GuiBuilder::fillWidgetHierarchyTreeRecursively(std::vector<tgui::String>& hierarchy, const std::shared_ptr<tgui::Widget>& parentWidget)
 {
     m_widgetHierarchyTree->addItem(hierarchy);
 
@@ -2343,7 +2632,7 @@ bool GuiBuilder::fillWidgetHierarchy(std::vector<tgui::String>& hierarchy, tgui:
 
     auto widgets = m_selectedForm->getWidgets();
 
-    auto it = std::find_if(widgets.begin(), widgets.end(), [&](std::shared_ptr<WidgetInfo> otherWidget){
+    auto it = std::find_if(widgets.begin(), widgets.end(), [widget](const std::shared_ptr<WidgetInfo>& otherWidget){
         return otherWidget->ptr.get() == widget;
     });
 
@@ -2384,7 +2673,7 @@ void GuiBuilder::menuBarCallbackKeyboardShortcuts()
 {
     auto keyboardShortcutsWindow = openWindowWithFocus();
     keyboardShortcutsWindow->setTitle("Keyboard shortcuts");
-    keyboardShortcutsWindow->setClientSize({375, 310});
+    keyboardShortcutsWindow->setClientSize({375, 340});
     keyboardShortcutsWindow->loadWidgetsFromFile("resources/forms/KeyboardShortcuts.txt");
 }
 
@@ -2399,4 +2688,91 @@ void GuiBuilder::menuBarCallbackAbout()
 
     auto labelVersion = aboutWindow->get<tgui::Label>("LabelVersion");
     labelVersion->setText(tgui::String::fromNumber(TGUI_VERSION_MAJOR) + "." + tgui::String::fromNumber(TGUI_VERSION_MINOR) + "." + tgui::String::fromNumber(TGUI_VERSION_PATCH));
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Save state to program interal memory for undo command
+void GuiBuilder::saveUndoState(GuiBuilder::UndoType type)
+{
+    tgui::String descString;
+    switch (type)
+    {
+    case GuiBuilder::UndoType::Delete:
+        descString = "Delete";
+        break;
+    case GuiBuilder::UndoType::Move:
+        descString = "Move";
+        break;
+    case GuiBuilder::UndoType::Resize:
+        descString = "Resize";
+        break;
+    case GuiBuilder::UndoType::Paste:
+        descString = "Paste";
+        break;
+    case GuiBuilder::UndoType::SendtoBack:
+        descString = "Send to Back";
+        break;
+    case GuiBuilder::UndoType::SendtoFront:
+        descString = "Send to Front";
+        break;
+    case GuiBuilder::UndoType::CreateNew:
+        descString = "Create New";
+        break;
+    case GuiBuilder::UndoType::PropertyEdit:
+        descString = "Property Edit";
+        break;
+    }
+
+    // Starts deleting beginning history of saved states if > max ammount set to prevent overflow or excess memory usage
+    if (m_undoSaves.size() >= UNDO_MAX_SAVES)
+    {
+        m_undoSaves.erase(m_undoSaves.begin());
+        m_undoSavesDesc.erase(m_undoSavesDesc.begin());
+    }
+
+    // Save state and desc of saved state
+    m_undoSaves.push_back(m_selectedForm->saveState());
+    m_undoSavesDesc.push_back(descString);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Clear page and load previous state
+void GuiBuilder::loadUndoState()
+{
+    if (m_undoSaves.empty())
+        return;
+
+    tgui::String selectedWidgetName;
+    const auto formSize = m_selectedForm->getSize();
+    const auto selectedWidget = m_selectedForm->getSelectedWidget();
+    if (selectedWidget)
+        selectedWidgetName = selectedWidget->name;
+
+    const tgui::String filename = m_selectedForm->getFilename();
+    m_selectedForm = nullptr;
+    m_forms.clear();
+
+    m_propertiesWindow = nullptr;
+    m_propertiesContainer = nullptr;
+    m_selectedWidgetComboBox = nullptr;
+
+    m_gui->removeAllWidgets();
+    m_gui->loadWidgetsFromFile("resources/forms/StartScreen.txt");
+
+    if (!loadGuiBuilderState())
+    {
+        m_themes["themes/Black.txt"] = { (tgui::getResourcePath() / "themes/Black.txt").asString() };
+        m_themes["themes/BabyBlue.txt"] = { (tgui::getResourcePath() / "themes/BabyBlue.txt").asString() };
+        m_themes["themes/TransparentGrey.txt"] = { (tgui::getResourcePath() / "themes/TransparentGrey.txt").asString() };
+    }
+
+    loadForm(filename, false);
+    m_selectedForm->focus();
+    m_selectedForm->setSize(formSize);
+    m_selectedForm->setChanged(true);
+
+    if (!selectedWidgetName.empty())
+        m_selectedForm->selectWidgetByName(selectedWidgetName);
 }

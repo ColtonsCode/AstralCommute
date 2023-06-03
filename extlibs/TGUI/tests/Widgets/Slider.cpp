@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,7 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Widgets/Slider.hpp>
 
 TEST_CASE("[Slider]")
 {
@@ -244,11 +243,17 @@ TEST_CASE("[Slider]")
 
                 SECTION("Mouse wheel scroll")
                 {
-                    slider->mouseWheelScrolled(-2, {});
+                    slider->scrolled(-2, {}, false);
                     REQUIRE(slider->getValue() == 14);
                     REQUIRE(valueChangedCount == 1);
-                    slider->mouseWheelScrolled(1, {});
+                    slider->scrolled(1, {}, false);
                     REQUIRE(slider->getValue() == 12);
+                    REQUIRE(valueChangedCount == 2);
+
+                    // If the scroll event originated from touch events (two finger scrolling) then it has no effect
+                    slider->scrolled(-1, {}, true);
+                    REQUIRE(valueChangedCount == 2);
+                    slider->scrolled(1, {}, true);
                     REQUIRE(valueChangedCount == 2);
                 }
             }
@@ -279,11 +284,17 @@ TEST_CASE("[Slider]")
 
                 SECTION("Mouse wheel scroll")
                 {
-                    slider->mouseWheelScrolled(-2, {});
+                    slider->scrolled(-2, {}, false);
                     REQUIRE(slider->getValue() == 14);
                     REQUIRE(valueChangedCount == 1);
-                    slider->mouseWheelScrolled(1, {});
+                    slider->scrolled(1, {}, false);
                     REQUIRE(slider->getValue() == 12);
+                    REQUIRE(valueChangedCount == 2);
+
+                    // If the scroll event originated from touch events (two finger scrolling) then it has no effect
+                    slider->scrolled(-1, {}, true);
+                    REQUIRE(valueChangedCount == 2);
+                    slider->scrolled(1, {}, true);
                     REQUIRE(valueChangedCount == 2);
                 }
             }

@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -34,9 +34,9 @@ namespace tgui
     TGUI_RENDERER_PROPERTY_OUTLINE(ComboBoxRenderer, Padding)
 
     TGUI_RENDERER_PROPERTY_COLOR(ComboBoxRenderer, BackgroundColor, Color::White)
-    TGUI_RENDERER_PROPERTY_COLOR(ComboBoxRenderer, BackgroundColorDisabled, Color::White)
+    TGUI_RENDERER_PROPERTY_COLOR(ComboBoxRenderer, BackgroundColorDisabled, {})
     TGUI_RENDERER_PROPERTY_COLOR(ComboBoxRenderer, TextColor, Color::Black)
-    TGUI_RENDERER_PROPERTY_COLOR(ComboBoxRenderer, TextColorDisabled, Color::Black)
+    TGUI_RENDERER_PROPERTY_COLOR(ComboBoxRenderer, TextColorDisabled, {})
     TGUI_RENDERER_PROPERTY_COLOR(ComboBoxRenderer, DefaultTextColor, {})
     TGUI_RENDERER_PROPERTY_COLOR(ComboBoxRenderer, ArrowBackgroundColor, Color::White)
     TGUI_RENDERER_PROPERTY_COLOR(ComboBoxRenderer, ArrowBackgroundColorHover, {})

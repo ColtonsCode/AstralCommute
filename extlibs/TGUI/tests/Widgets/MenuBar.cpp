@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,8 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Widgets/MenuBar.hpp>
-#include <TGUI/Widgets/Panel.hpp>
 
 TEST_CASE("[MenuBar]")
 {
@@ -34,8 +32,8 @@ TEST_CASE("[MenuBar]")
     SECTION("Signals")
     {
         menuBar->onMenuItemClick([](){});
-        menuBar->onMenuItemClick([](tgui::String){});
-        menuBar->onMenuItemClick([](std::vector<tgui::String>){});
+        menuBar->onMenuItemClick([](const tgui::String&){});
+        menuBar->onMenuItemClick([](const std::vector<tgui::String>&){});
 
         menuBar->connectMenuItem("File", "Save", [](){});
         menuBar->connectMenuItem({"Help", "About", "Version"}, [](){});
@@ -210,6 +208,40 @@ TEST_CASE("[MenuBar]")
             REQUIRE(!menuBar->removeMenuItem({"File", "Other", "Print"}));
             REQUIRE(!menuBar->addMenuItem({"File", "Other", "Extra", "Quit"}, false));
         }
+    }
+
+    SECTION("Renaming menus")
+    {
+        menuBar->addMenu("File");
+        menuBar->addMenuItem("Load");
+        menuBar->addMenuItem("Save");
+        menuBar->addMenu("Edit");
+        menuBar->addMenuItem("Undo");
+        menuBar->addMenuItem("Redo");
+        menuBar->addMenuItem("Copy");
+        menuBar->addMenuItem("Paste");
+        menuBar->addMenuItem({"This", "is", "an experiment"});
+        menuBar->addMenuItem({"This", "is", "a test"});
+
+        // Rename a menu
+        REQUIRE(menuBar->getMenus()[1].text == "Edit");
+        REQUIRE(menuBar->changeMenuItem({"Edit"}, "EDIT"));
+        REQUIRE(menuBar->getMenus()[1].text == "EDIT");
+
+        // We can't access the menu items with the old name
+        REQUIRE(!menuBar->changeMenuItem({"Edit", "Redo"}, "REDO"));
+        REQUIRE(menuBar->getMenus()[1].menuItems[1].text == "Redo");
+
+        // Rename a menu item
+        REQUIRE(menuBar->changeMenuItem({"EDIT", "Copy"}, "COPY"));
+        REQUIRE(menuBar->getMenus()[1].menuItems[2].text == "COPY");
+
+        // Rename a menu item in a sub menu
+        REQUIRE(menuBar->changeMenuItem({"This", "is", "a test"}, "THE test"));
+        REQUIRE(menuBar->getMenus()[2].menuItems[0].menuItems[1].text == "THE test");
+
+        // We can't rename something that doesn't exist
+        REQUIRE(!menuBar->changeMenuItem({"This", "won't", "work"}, "Just testing"));
     }
 
     SECTION("Disabling menus")

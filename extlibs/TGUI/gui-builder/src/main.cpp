@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -26,18 +26,20 @@
 
 // SDL has its own main function on some platforms but it has a define so that we can still call our version "main".
 // So if we are using the SDL backend then we must include it in this file.
-#if !TGUI_HAS_BACKEND_SFML && TGUI_HAS_BACKEND_SDL
+#if !TGUI_HAS_BACKEND_SFML_GRAPHICS && !TGUI_HAS_BACKEND_SFML_OPENGL3 \
+ && (TGUI_HAS_BACKEND_SDL_RENDERER || TGUI_HAS_BACKEND_SDL_OPENGL3 || TGUI_HAS_BACKEND_SDL_GLES2 || TGUI_HAS_BACKEND_SDL_TTF_OPENGL3 || TGUI_HAS_BACKEND_SDL_TTF_GLES2)
     #include <SDL_main.h>
 #endif
 
 #ifdef TGUI_SYSTEM_WINDOWS
-    #include <TGUI/WindowsInclude.hpp> // GetCommandLineW
+    #include <TGUI/extlibs/IncludeWindows.hpp> // GetCommandLineW
     #include <shellapi.h> // CommandLineToArgvW
 #endif
 
 #ifdef TGUI_SYSTEM_WINDOWS
 int main(int, char**) // We don't use argv on Windows
 #else
+// cppcheck-suppress[constParameter,unmatchedSuppression]
 int main(int, char* argv[])
 #endif
 {
@@ -59,6 +61,7 @@ int main(int, char* argv[])
         }
 
         const tgui::String exePath = argvW[0];
+        LocalFree(argvW);
 #else
         const tgui::String exePath = argv[0];
 #endif

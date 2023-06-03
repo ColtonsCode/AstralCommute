@@ -1,5 +1,7 @@
 /include/TGUI/Config.hpp
 /build*
+/obj
+/bin
 /cmake-build-debug
 /cmake-build-release
 /gui-builder/themes

@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -29,6 +29,10 @@
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char Button::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     Button::Button(const char* typeName, bool initRenderer) :
@@ -50,7 +54,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Button::Ptr Button::copy(Button::ConstPtr button)
+    Button::Ptr Button::copy(const Button::ConstPtr& button)
     {
         if (button)
             return std::static_pointer_cast<Button>(button->clone());
@@ -60,17 +64,17 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Button::leftMousePressed(Vector2f pos)
+    bool Button::leftMousePressed(Vector2f pos)
     {
         m_down = true;
-        ButtonBase::leftMousePressed(pos);
+        return ButtonBase::leftMousePressed(pos);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     void Button::leftMouseReleased(Vector2f pos)
     {
-        const double bMouseWasDown = m_mouseDown;
+        const bool bMouseWasDown = m_mouseDown;
 
         m_down = false;
         ButtonBase::leftMouseReleased(pos);
@@ -121,6 +125,13 @@ namespace tgui
             return onPress;
         else
             return ButtonBase::getSignal(std::move(signalName));
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr Button::clone() const
+    {
+        return std::make_shared<Button>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

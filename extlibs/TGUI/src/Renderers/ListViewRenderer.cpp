@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -46,6 +46,9 @@ namespace tgui
     TGUI_RENDERER_PROPERTY_COLOR(ListViewRenderer, BorderColor, Color::Black)
     TGUI_RENDERER_PROPERTY_COLOR(ListViewRenderer, SeparatorColor, Color(200, 200, 200))
     TGUI_RENDERER_PROPERTY_COLOR(ListViewRenderer, GridLinesColor, {})
+
+    TGUI_RENDERER_PROPERTY_TEXTURE(ListViewRenderer, TextureHeaderBackground)
+    TGUI_RENDERER_PROPERTY_TEXTURE(ListViewRenderer, TextureBackground)
 
     TGUI_RENDERER_PROPERTY_RENDERER(ListViewRenderer, Scrollbar, "Scrollbar")
     TGUI_RENDERER_PROPERTY_NUMBER(ListViewRenderer, ScrollbarWidth, 0)

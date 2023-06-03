@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -28,11 +28,14 @@
 
 #include <TGUI/Config.hpp>
 #include <TGUI/Vector2.hpp>
-#include <cstdint>
+
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cstdint>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Class that allows the cursor to be changed
@@ -57,6 +60,8 @@ namespace tgui
             SizeBottomRight,        //!< Bottom-right arrow on Linux, double arrow cursor going from top-left to bottom-right on Windows and
             SizeBottomLeft,         //!< Bottom-left arrow on Linux, double arrow cursor going from bottom-left to top-right on Windows and macOS
             SizeTopRight,           //!< Top-right arrow on Linux, double arrow cursor going from bottom-left to top-right on Windows and macOS
+            SizeHorizontal,         //!< Horizontal double arrow cursor
+            SizeVertical,           //!< Vertical double arrow cursor
             Crosshair,              //!< Crosshair cursor
             Help,                   //!< Help cursor
             NotAllowed              //!< Action not allowed cursor

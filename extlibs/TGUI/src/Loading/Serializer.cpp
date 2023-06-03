@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,6 +27,51 @@
 #include <TGUI/Loading/DataIO.hpp>
 #include <TGUI/Renderers/WidgetRenderer.hpp>
 #include <TGUI/Exception.hpp>
+#include <TGUI/Base64.hpp>
+#include <cassert>
+
+#if defined(__GNUC__)
+#   pragma GCC diagnostic push
+#   pragma GCC diagnostic ignored "-Wold-style-cast"
+#   pragma GCC diagnostic ignored "-Wnull-dereference"
+#   pragma GCC diagnostic ignored "-Wsign-conversion"
+#   pragma GCC diagnostic ignored "-Wunused-function"
+#   pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+#   pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+#elif defined (_MSC_VER)
+#   if defined(__clang__)
+#       pragma clang diagnostic push
+#       pragma clang diagnostic ignored "-Wold-style-cast"
+#       pragma clang diagnostic ignored "-Wnull-dereference"
+#       pragma clang diagnostic ignored "-Wsign-conversion"
+#       pragma clang diagnostic ignored "-Wunused-function"
+#       pragma clang diagnostic ignored "-Wimplicit-fallthrough"
+#       pragma clang diagnostic ignored "-Wmissing-field-initializers"
+#   else
+#       pragma warning(push)
+#       pragma warning(disable: 4505) // Unreferenced local function
+#   endif
+#endif
+
+#define STBI_WRITE_NO_STDIO
+
+#if TGUI_USE_SYSTEM_STB
+#   include <stb_image_write.h>
+#else
+#   define STB_IMAGE_WRITE_STATIC
+#   define STB_IMAGE_WRITE_IMPLEMENTATION
+#   include <TGUI/extlibs/stb/stb_image_write.h>
+#endif
+
+#if defined(__GNUC__)
+#   pragma GCC diagnostic pop
+#elif defined (_MSC_VER)
+#   if defined(__clang__)
+#       pragma clang diagnostic pop
+#   else
+#       pragma warning(pop)
+#   endif
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -67,7 +112,7 @@ namespace tgui
 
         String serializeEmptyObject(ObjectConverter&&)
         {
-            throw Exception{"Can't serialize empty object"};
+            throw Exception{U"Can't serialize empty object"};
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -103,7 +148,7 @@ namespace tgui
             for (const auto& pair : Color::colorNamesMap)
             {
                 if (color == pair.second)
-                    return String(pair.first);
+                    return String{pair.first};
             }
 
             // Return the color by its rgb value
@@ -119,33 +164,39 @@ namespace tgui
             bool encodingRequired = false;
             if (result.empty())
                 encodingRequired = true;
-            for (const char32_t c : result)
+            else
             {
-                // Slashes have to be serialized because the DataIO parser doesn't like values starting with a slash
-                if ((c != U'%') && (c != U'_') && (c != U'@') && ((c < U'0') || (c > U'9')) && ((c < U'A') || (c > U'Z')) && ((c < U'a') || (c > U'z')))
-                    encodingRequired = true;
+                for (const char32_t c : result)
+                {
+                    // Slashes have to be serialized because the DataIO parser doesn't like values starting with a slash
+                    if ((c != U'%') && (c != U'_') && (c != U'@') && ((c < U'0') || (c > U'9')) && ((c < U'A') || (c > U'Z')) && ((c < U'a') || (c > U'z')))
+                    {
+                        encodingRequired = true;
+                        break;
+                    }
+                }
             }
 
             if (!encodingRequired)
                 return result;
 
-            auto replace = [&](char from, char to)
+            auto replace = [&](char32_t from, char32_t to)
                 {
                     std::size_t pos = 0;
                     while ((pos = result.find(from, pos)) != String::npos)
                     {
                         result[pos] = to;
-                        result.insert(pos, 1, '\\');
+                        result.insert(pos, 1, U'\\');
                         pos += 2;
                     }
                 };
 
-            replace('\\', '\\');
-            replace('\"', '\"');
-            replace('\v', 'v');
-            replace('\t', 't');
-            replace('\n', 'n');
-            replace('\0', '0');
+            replace(U'\\', U'\\');
+            replace(U'\"', U'\"');
+            replace(U'\v', U'v');
+            replace(U'\t', U't');
+            replace(U'\n', U'n');
+            replace(U'\0', U'0');
 
             return "\"" + result + "\"";
         }
@@ -169,10 +220,32 @@ namespace tgui
         String serializeTexture(ObjectConverter&& value)
         {
             Texture texture = value.getTexture();
-            if (texture.getId().empty())
+            if (!texture.getData())
                 return "None";
 
-            String result = "\"" + texture.getId() + "\"";
+            String result;
+            if (!texture.getId().empty())
+                result = "\"" + texture.getId() + "\"";
+            else
+            {
+                if (!texture.getData()->backendTexture || !texture.getData()->backendTexture->getPixels())
+                    return "None";
+
+                // We don't have a filename for the image, so save it as base64
+                const Vector2u imageSize = texture.getData()->backendTexture->getSize();
+                const std::uint8_t* pixels = texture.getData()->backendTexture->getPixels();
+
+                int dataLength = 0;
+                unsigned char* pngData = stbi_write_png_to_mem(static_cast<const unsigned char*>(pixels),
+                    static_cast<int>(imageSize.x * 4), static_cast<int>(imageSize.x), static_cast<int>(imageSize.y), 4, &dataLength);
+                if (!pngData)
+                    return "None";
+
+                assert(dataLength >= 0); // Length is always positive, but returned as a signed int
+                result = "\"data:image/png;base64," + base64Encode(pngData, static_cast<std::size_t>(dataLength)) + "\"";
+                STBIW_FREE(pngData); // NOLINT(cppcoreguidelines-no-malloc)
+            }
+
             if (texture.getData()->backendTexture)
             {
                 const UIntRect& partRect = texture.getPartRect();

@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,9 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Widgets/Label.hpp>
-#include <TGUI/Widgets/ComboBox.hpp>
-#include <TGUI/Widgets/Group.hpp>
 
 TEST_CASE("[ComboBox]")
 {
@@ -36,8 +33,8 @@ TEST_CASE("[ComboBox]")
     {
         comboBox->onItemSelect([](){});
         comboBox->onItemSelect([](int){});
-        comboBox->onItemSelect([](tgui::String){});
-        comboBox->onItemSelect([](tgui::String, tgui::String){});
+        comboBox->onItemSelect([](const tgui::String&){});
+        comboBox->onItemSelect([](const tgui::String&, const tgui::String&){});
     }
 
     SECTION("WidgetType")
@@ -325,25 +322,31 @@ TEST_CASE("[ComboBox]")
 
             SECTION("Mouse wheel scroll")
             {
-                container->mouseWheelScrolled(-1, mousePosOnComboBox);
+                container->scrolled(-1, mousePosOnComboBox, false);
                 REQUIRE(comboBox->getSelectedItemIndex() == 0);
                 REQUIRE(itemSelectedCount == 1);
-                container->mouseWheelScrolled(-1, mousePosOnComboBox);
+                container->scrolled(-1, mousePosOnComboBox, false);
                 REQUIRE(comboBox->getSelectedItemIndex() == 1);
                 REQUIRE(itemSelectedCount == 2);
-                container->mouseWheelScrolled(1, mousePosOnComboBox);
+                container->scrolled(1, mousePosOnComboBox, false);
                 REQUIRE(comboBox->getSelectedItemIndex() == 0);
                 REQUIRE(itemSelectedCount == 3);
 
+                // If the scroll event originated from touch events (two finger scrolling) then it has no effect
+                container->scrolled(-1, mousePosOnComboBox, true);
+                REQUIRE(comboBox->getSelectedItemIndex() == 0);
+                container->scrolled(1, mousePosOnComboBox, true);
+                REQUIRE(comboBox->getSelectedItemIndex() == 0);
+
                 // Changing item by scrolling can be disabled
                 comboBox->setChangeItemOnScroll(false);
-                container->mouseWheelScrolled(-1, mousePosOnComboBox);
+                container->scrolled(-1, mousePosOnComboBox, false);
                 REQUIRE(comboBox->getSelectedItemIndex() == 0);
                 comboBox->setChangeItemOnScroll(true);
 
                 // Scrolling on the combo box has no effect when the list is open
                 mouseClick(mousePosOnComboBox);
-                container->mouseWheelScrolled(-1, mousePosOnComboBox);
+                container->scrolled(-1, mousePosOnComboBox, false);
                 REQUIRE(comboBox->getSelectedItemIndex() == 0);
                 REQUIRE(itemSelectedCount == 3);
             }
@@ -459,7 +462,7 @@ TEST_CASE("[ComboBox]")
             REQUIRE(renderer->getProperty("TextStyle").getTextStyle() == tgui::TextStyle::Bold);
             REQUIRE(renderer->getProperty("DefaultTextStyle").getTextStyle() == tgui::TextStyle::Italic);
 
-            REQUIRE(renderer->getListBox()->propertyValuePairs.size() == 2);
+            REQUIRE(renderer->getListBox()->propertyValuePairs.size() >= 2);  // Also contains Scrollbar from default White theme
             REQUIRE(renderer->getListBox()->propertyValuePairs["BackgroundColor"].getColor() == tgui::Color::Red);
             REQUIRE(renderer->getListBox()->propertyValuePairs["TextColor"].getColor() == tgui::Color::Blue);
         }

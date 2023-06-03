@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -29,12 +29,15 @@
 
 #include <TGUI/Vector2.hpp>
 #include <TGUI/String.hpp>
-#include <cstdint>
-#include <memory>
+
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cstdint>
+    #include <memory>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Class that is internally used to load an image from a file or from memory
@@ -51,7 +54,7 @@ namespace tgui
         ///
         /// @return RGBA array of pixels of loaded image (4 * imageSize.x * imageSize.y bytes), or nullptr if loading failed
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        static std::unique_ptr<std::uint8_t[]> loadFromFile(const String& filename, Vector2u& imageSize);
+        TGUI_NODISCARD static std::unique_ptr<std::uint8_t[]> loadFromFile(const String& filename, Vector2u& imageSize);
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -63,7 +66,7 @@ namespace tgui
         ///
         /// @return RGBA array of pixels of loaded image (4 * imageSize.x * imageSize.y bytes), or nullptr if loading failed
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        static std::unique_ptr<std::uint8_t[]> loadFromMemory(const std::uint8_t* data, std::size_t dataSize, Vector2u& imageSize);
+        TGUI_NODISCARD static std::unique_ptr<std::uint8_t[]> loadFromMemory(const std::uint8_t* data, std::size_t dataSize, Vector2u& imageSize);
     };
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,19 +27,16 @@
 #define TGUI_UTF_HPP
 
 #include <TGUI/Config.hpp>
-#include <string>
-#include <array>
+
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cstdint>
+    #include <string>
+    #include <array>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// Disable warning in Visual Studio about being able to use "if constexpr".
-// The code would use "if constexpr" if the compiler would just define __cpp_if_constexpr
-#if defined TGUI_SYSTEM_WINDOWS && defined _MSC_VER
-    #pragma warning(push)
-    #pragma warning(disable:4127)
-#endif
-
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
     namespace utf
     {
@@ -63,23 +60,29 @@ namespace tgui
 
             // Get the number of bytes to write
             std::size_t bytestoWrite;
+            std::uint8_t firstByteMask;
             if (input <  0x800)
+            {
                 bytestoWrite = 2;
+                firstByteMask = 0xC0;
+            }
             else if (input <  0x10000)
+            {
                 bytestoWrite = 3;
-            else if (input <= 0x0010FFFF)
-                bytestoWrite = 4;
+                firstByteMask = 0xE0;
+            }
             else
-                return;
-
-            static const std::uint8_t firstByteMask[5] = { 0, 0, 0xC0, 0xE0, 0xF0 };
+            {
+                bytestoWrite = 4;
+                firstByteMask = 0xF0;
+            }
 
             // Extract the bytes to write
             std::array<CharT, 4> bytes;
             if (bytestoWrite == 4) { bytes[3] = static_cast<CharT>((input | 0x80) & 0xBF); input >>= 6; }
             if (bytestoWrite >= 3) { bytes[2] = static_cast<CharT>((input | 0x80) & 0xBF); input >>= 6; }
-            if (bytestoWrite >= 2) { bytes[1] = static_cast<CharT>((input | 0x80) & 0xBF); input >>= 6; }
-            if (bytestoWrite >= 1) { bytes[0] = static_cast<CharT>(input | firstByteMask[bytestoWrite]); }
+            bytes[1] = static_cast<CharT>((input | 0x80) & 0xBF); input >>= 6;
+            bytes[0] = static_cast<CharT>(input | firstByteMask);
 
             // Add them to the output
             outStrUtf8.append(bytes.begin(), bytes.begin() + bytestoWrite);
@@ -142,7 +145,7 @@ namespace tgui
         /// @param strUtf32  Input UTF-32 string
         /// @return Output UTF-8 string
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        inline std::u8string convertUtf32toUtf8(const std::u32string& strUtf32)
+        TGUI_NODISCARD inline std::u8string convertUtf32toUtf8(const std::u32string& strUtf32)
         {
             std::u8string outStrUtf8;
             outStrUtf8.reserve(strUtf32.length() + 1);
@@ -160,10 +163,10 @@ namespace tgui
         /// @return Output UTF-32 string
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         template <typename CharIt>
-        std::u32string convertUtf8toUtf32(CharIt inputBegin, CharIt inputEnd)
+        TGUI_NODISCARD std::u32string convertUtf8toUtf32(CharIt inputBegin, CharIt inputEnd)
         {
             std::u32string outStrUtf32;
-            outStrUtf32.reserve((inputEnd - inputBegin) + 1);
+            outStrUtf32.reserve(static_cast<std::size_t>((inputEnd - inputBegin) + 1));
 
             auto it = inputBegin;
             while (it < inputEnd)
@@ -180,10 +183,10 @@ namespace tgui
         /// @return Output UTF-32 string
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         template <typename U16CharIt>
-        std::u32string convertUtf16toUtf32(U16CharIt inputBegin, U16CharIt inputEnd)
+        TGUI_NODISCARD std::u32string convertUtf16toUtf32(U16CharIt inputBegin, U16CharIt inputEnd)
         {
             std::u32string outStrUtf32;
-            outStrUtf32.reserve((inputEnd - inputBegin) + 1);
+            outStrUtf32.reserve(static_cast<std::size_t>((inputEnd - inputBegin) + 1));
 
             auto it = inputBegin;
             while (it < inputEnd)
@@ -217,10 +220,10 @@ namespace tgui
         /// @return Output UTF-32 string
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         template <typename WCharIt>
-        std::u32string convertWidetoUtf32(WCharIt inputBegin, WCharIt inputEnd)
+        TGUI_NODISCARD std::u32string convertWidetoUtf32(WCharIt inputBegin, WCharIt inputEnd)
         {
             std::u32string outStrUtf32;
-            outStrUtf32.reserve((inputEnd - inputBegin) + 1);
+            outStrUtf32.reserve(static_cast<std::size_t>((inputEnd - inputBegin) + 1));
 
             // std::wstring uses UCS-2 on Windows and UCS-4 on unix, so we can be cast directly
             for (auto it = inputBegin; it != inputEnd; ++it)
@@ -236,7 +239,7 @@ namespace tgui
         /// @param strUtf32  Input UTF-32 string
         /// @return Output latin-1 encoded string
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        inline std::string convertUtf32toLatin1(const std::u32string& strUtf32)
+        TGUI_NODISCARD inline std::string convertUtf32toLatin1(const std::u32string& strUtf32)
         {
             std::string outStr;
             outStr.reserve(strUtf32.length() + 1);
@@ -255,7 +258,7 @@ namespace tgui
         /// @param strUtf32  Input UTF-32 string
         /// @return Output UTF-8 string
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        inline std::string convertUtf32toStdStringUtf8(const std::u32string& strUtf32)
+        TGUI_NODISCARD inline std::string convertUtf32toStdStringUtf8(const std::u32string& strUtf32)
         {
             std::string outStrUtf8;
             outStrUtf8.reserve(strUtf32.length() + 1);
@@ -271,16 +274,12 @@ namespace tgui
         /// @param strUtf32  Input UTF-32 string
         /// @return Output wstring
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        inline std::wstring convertUtf32toWide(const std::u32string& strUtf32)
+        TGUI_NODISCARD inline std::wstring convertUtf32toWide(const std::u32string& strUtf32)
         {
             std::wstring outStr;
             outStr.reserve(strUtf32.length() + 1);
 
-#if defined(__cpp_if_constexpr) && (__cpp_if_constexpr >= 201606L)
-            if constexpr (sizeof(wchar_t) == 4)
-#else
-            if (sizeof(wchar_t) == 4)
-#endif
+            TGUI_IF_CONSTEXPR (sizeof(wchar_t) == 4)
             {
                 // On Unix, wide characters are UCS-4 and we can just copy the characters
                 for (const char32_t codepoint : strUtf32)
@@ -305,7 +304,7 @@ namespace tgui
         /// @param strUtf32  Input UTF-32 string
         /// @return Output UTF-16 string
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        inline std::u16string convertUtf32toUtf16(const std::u32string& strUtf32)
+        TGUI_NODISCARD inline std::u16string convertUtf32toUtf16(const std::u32string& strUtf32)
         {
             std::u16string outStrUtf16;
             outStrUtf16.reserve(strUtf32.length() + 1);
@@ -334,10 +333,6 @@ namespace tgui
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     }
 }
-
-#if defined TGUI_SYSTEM_WINDOWS && defined _MSC_VER
-    #pragma warning(pop)
-#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

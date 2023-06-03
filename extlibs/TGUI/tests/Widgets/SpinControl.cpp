@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,8 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Widgets/SpinControl.hpp>
-#include <TGUI/Widgets/Panel.hpp>
 
 TEST_CASE("[spinControl]")
 {
@@ -125,6 +123,15 @@ TEST_CASE("[spinControl]")
         REQUIRE(spinControl->getDecimalPlaces() == 3);
     }
 
+    SECTION("UseWideArrows")
+    {
+        REQUIRE(!spinControl->getUseWideArrows());
+        spinControl->setUseWideArrows(true);
+        REQUIRE(spinControl->getUseWideArrows());
+        spinControl->setUseWideArrows(false);
+        REQUIRE(!spinControl->getUseWideArrows());
+    }
+
     SECTION("Events / Signals")
     {
         SECTION("ValueChanged")
@@ -172,6 +179,6 @@ TEST_CASE("[spinControl]")
         spinControl->setValue(20);
         spinControl->setStep(5);
 
-        testSavingWidget("SpinControl", spinControl, false);
+        testSavingWidget("SpinControl", spinControl);
     }
 }

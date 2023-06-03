@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,9 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Widgets/ChildWindow.hpp>
-#include <TGUI/Widgets/Picture.hpp>
-#include <TGUI/Widgets/Panel.hpp>
 
 TEST_CASE("[ChildWindow]")
 {
@@ -37,19 +34,19 @@ TEST_CASE("[ChildWindow]")
         childWindow->onMousePress([](){});
 
         childWindow->onClose([](){});
-        childWindow->onClose([](tgui::ChildWindow::Ptr){});
+        childWindow->onClose([](const tgui::ChildWindow::Ptr&){});
 
         childWindow->onClosing([](){});
         childWindow->onClosing([](bool*){});
 
         childWindow->onMaximize([](){});
-        childWindow->onMaximize([](tgui::ChildWindow::Ptr){});
+        childWindow->onMaximize([](const tgui::ChildWindow::Ptr&){});
 
         childWindow->onMinimize([](){});
-        childWindow->onMinimize([](tgui::ChildWindow::Ptr){});
+        childWindow->onMinimize([](const tgui::ChildWindow::Ptr&){});
 
         childWindow->onEscapeKeyPress([](){});
-        childWindow->onEscapeKeyPress([](tgui::ChildWindow::Ptr){});
+        childWindow->onEscapeKeyPress([](const tgui::ChildWindow::Ptr&){});
     }
 
     SECTION("WidgetType")
@@ -113,6 +110,41 @@ TEST_CASE("[ChildWindow]")
         // Size limits are for user interaction and setSize ignores this property
         childWindow->setSize({400, 300});
         REQUIRE(childWindow->getSize() == tgui::Vector2f(400, 300));
+    }
+
+    SECTION("ClientSize")
+    {
+        childWindow->getRenderer()->setTitleBarHeight(20);
+        childWindow->getRenderer()->setBorders({1, 2, 4, 8});
+        childWindow->getRenderer()->setBorderBelowTitleBar(2);
+
+        SECTION("setClientSize")
+        {
+            childWindow->setClientSize({300, 250});
+            REQUIRE(childWindow->getClientSize() == tgui::Vector2f(300, 250));
+            REQUIRE(childWindow->getSize() == tgui::Vector2f(305, 282));
+
+            // Client size remains fixed when setClientSize was used
+            childWindow->getRenderer()->setTitleBarHeight(15);
+            childWindow->getRenderer()->setBorders({8, 4, 2, 1});
+            childWindow->getRenderer()->setBorderBelowTitleBar(1);
+            REQUIRE(childWindow->getClientSize() == tgui::Vector2f(300, 250));
+            REQUIRE(childWindow->getSize() == tgui::Vector2f(310, 271));
+        }
+
+        SECTION("setSize")
+        {
+            childWindow->setSize({300, 250});
+            REQUIRE(childWindow->getClientSize() == tgui::Vector2f(295, 218));
+            REQUIRE(childWindow->getSize() == tgui::Vector2f(300, 250));
+
+            // Client size changes
+            childWindow->getRenderer()->setTitleBarHeight(15);
+            childWindow->getRenderer()->setBorders({8, 4, 2, 1});
+            childWindow->getRenderer()->setBorderBelowTitleBar(1);
+            REQUIRE(childWindow->getClientSize() == tgui::Vector2f(290, 229));
+            REQUIRE(childWindow->getSize() == tgui::Vector2f(300, 250));
+        }
     }
 
     SECTION("Title")

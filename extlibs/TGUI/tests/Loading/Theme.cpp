@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,8 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Loading/Theme.hpp>
-#include <TGUI/Widgets/Label.hpp>
 
 // TODO: Reloading theme
 
@@ -115,6 +113,9 @@ TEST_CASE("[Theme]")
                 // Changing the renderer of one label affects the look of the other one
                 label1->getSharedRenderer()->setTextColor("yellow");
                 REQUIRE(label2->getSharedRenderer()->getTextColor() == tgui::Color::Yellow);
+
+                // We messed with the default theme, so reset it to not affect other tests
+                tgui::Theme::setDefault(nullptr);
             }
 
             SECTION("Using getRenderer")
@@ -191,10 +192,10 @@ TEST_CASE("[Theme]")
         REQUIRE(tgui::Theme::getThemeLoader() == loader);
 
         tgui::Theme theme1;
-        theme1.getRenderer("Button");
+        (void)theme1.getRenderer("Button");
 
         tgui::Theme theme2("resources/Black.txt");
-        theme2.getRenderer("EditBox");
+        (void)theme2.getRenderer("EditBox");
 
         tgui::Theme::setThemeLoader(std::make_shared<tgui::DefaultThemeLoader>());
         REQUIRE(tgui::Theme::getThemeLoader() != loader);

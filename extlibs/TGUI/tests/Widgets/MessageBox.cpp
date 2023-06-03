@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,7 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Widgets/MessageBox.hpp>
 
 TEST_CASE("[MessageBox]")
 {
@@ -33,7 +32,7 @@ TEST_CASE("[MessageBox]")
     SECTION("Signals")
     {
         messageBox->onButtonPress([](){});
-        messageBox->onButtonPress([](tgui::String){});
+        messageBox->onButtonPress([](const tgui::String&){});
     }
 
     SECTION("WidgetType")
@@ -66,6 +65,28 @@ TEST_CASE("[MessageBox]")
         REQUIRE(messageBox->getButtons().size() == 2);
         REQUIRE(messageBox->getButtons()[0] == "First");
         REQUIRE(messageBox->getButtons()[1] == "Second");
+    }
+
+    SECTION("LabelAlignment")
+    {
+        REQUIRE(messageBox->getLabelAlignment() == tgui::MessageBox::Alignment::Left);
+        messageBox->setLabelAlignment(tgui::MessageBox::Alignment::Right);
+        REQUIRE(messageBox->getLabelAlignment() == tgui::MessageBox::Alignment::Right);
+        messageBox->setLabelAlignment(tgui::MessageBox::Alignment::Center);
+        REQUIRE(messageBox->getLabelAlignment() == tgui::MessageBox::Alignment::Center);
+        messageBox->setLabelAlignment(tgui::MessageBox::Alignment::Left);
+        REQUIRE(messageBox->getLabelAlignment() == tgui::MessageBox::Alignment::Left);
+    }
+
+    SECTION("ButtonAlignment")
+    {
+        REQUIRE(messageBox->getButtonAlignment() == tgui::MessageBox::Alignment::Center);
+        messageBox->setButtonAlignment(tgui::MessageBox::Alignment::Left);
+        REQUIRE(messageBox->getButtonAlignment() == tgui::MessageBox::Alignment::Left);
+        messageBox->setButtonAlignment(tgui::MessageBox::Alignment::Right);
+        REQUIRE(messageBox->getButtonAlignment() == tgui::MessageBox::Alignment::Right);
+        messageBox->setButtonAlignment(tgui::MessageBox::Alignment::Center);
+        REQUIRE(messageBox->getButtonAlignment() == tgui::MessageBox::Alignment::Center);
     }
 
     testWidgetRenderer(messageBox->getRenderer());

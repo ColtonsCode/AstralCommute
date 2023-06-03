@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,8 +23,8 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-#include "Form.hpp"
 #include "GuiBuilder.hpp"
+#include "Form.hpp"
 
 // WidgetProperties are only included to allow importing 0.8 form files.
 // No new widgets need to be added here and this can be removed again in the future.
@@ -53,14 +53,6 @@
 #include "WidgetProperties/TextAreaProperties.hpp"
 #include "WidgetProperties/TreeViewProperties.hpp"
 
-#include <TGUI/Backend.hpp>
-
-#include <stack>
-#include <cassert>
-#include <cmath>
-#include <fstream>
-#include <set>
-
 const static float MOVE_STEP = 10;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -73,9 +65,9 @@ static void importOldFormFileExtractValidProperties(std::set<tgui::String>& poss
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static void importOldFormFileFixRendererProperties(std::unique_ptr<tgui::DataIO::Node>& parentNode, const std::set<tgui::String>& possibleProperties)
+static void importOldFormFileFixRendererProperties(const std::unique_ptr<tgui::DataIO::Node>& parentNode, const std::set<tgui::String>& possibleProperties)
 {
-    for (auto& node : parentNode->children)
+    for (const auto& node : parentNode->children)
     {
         if (!node->children.empty())
             importOldFormFileFixRendererProperties(node, possibleProperties);
@@ -114,7 +106,7 @@ static void importOldFormFileFixRendererProperties(std::unique_ptr<tgui::DataIO:
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static void importOldForm(std::unique_ptr<tgui::DataIO::Node>& rootNode)
+static void importOldForm(const std::unique_ptr<tgui::DataIO::Node>& rootNode)
 {
     // Construct a list of all existing renderer properties for all widgets.
     // Since the renderers may be global in the form file, we can't know which widget type will use it (without some effort),
@@ -284,14 +276,14 @@ static void makePathsRelative(const std::unique_ptr<tgui::DataIO::Node>& node, c
             }
 
             // Make the path relative to the form or gui builder
-            if (filename.startsWith(formPath))
+            if (filename.starts_with(formPath))
             {
                 if (pair.second->value[0] != '"')
                     pair.second->value.erase(0, formPath.length());
                 else
                     pair.second->value.erase(1, formPath.length());
             }
-            else if (filename.startsWith(guiBuilderPath))
+            else if (filename.starts_with(guiBuilderPath))
             {
                 if (pair.second->value[0] != '"')
                     pair.second->value.erase(0, guiBuilderPath.length());
@@ -358,7 +350,7 @@ static void makePathsRelative(const std::unique_ptr<tgui::DataIO::Node>& node, c
                             if (basePathStr.back() != '/')
                                 basePathStr.push_back('/');
 
-                            if (filename.startsWith(basePathStr))
+                            if (filename.starts_with(basePathStr))
                             {
                                 if (pair.second->value[0] != '"')
                                 {
@@ -393,7 +385,7 @@ static void makePathsRelative(const std::unique_ptr<tgui::DataIO::Node>& node, c
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-Form::Form(GuiBuilder* guiBuilder, const tgui::String& filename, tgui::ChildWindow::Ptr formWindow, tgui::Vector2f formSize) :
+Form::Form(GuiBuilder* guiBuilder, const tgui::String& filename, const tgui::ChildWindow::Ptr& formWindow, tgui::Vector2f formSize) :
     m_guiBuilder      {guiBuilder},
     m_formWindow      {formWindow},
     m_scrollablePanel {formWindow->get<tgui::ScrollablePanel>("ScrollablePanel")},
@@ -405,10 +397,10 @@ Form::Form(GuiBuilder* guiBuilder, const tgui::String& filename, tgui::ChildWind
 
     m_formWindow->setTitle(filename);
     m_formWindow->onClose([this]{ m_guiBuilder->closeForm(this); });
-    m_formWindow->onSizeChange([this] { m_scrollablePanel->setSize(m_formWindow->getClientSize()); });
+    m_formWindow->onSizeChange([this]{ m_scrollablePanel->setSize(m_formWindow->getClientSize()); });
 
     auto eventHandler = tgui::ClickableWidget::create();
-    eventHandler->onMousePress([=](tgui::Vector2f pos){ onFormMousePress(pos); });
+    eventHandler->onMousePress([this](tgui::Vector2f pos){ onFormMousePress(pos); });
     m_scrollablePanel->add(eventHandler, "EventHandler");
 
     setSize(formSize);
@@ -420,14 +412,14 @@ Form::Form(GuiBuilder* guiBuilder, const tgui::String& filename, tgui::ChildWind
         square->setRenderer(selectionSquareTheme.getRenderer("Square"));
         square->setSize(tgui::Vector2f{square->getRenderer()->getTexture().getImageSize()});
         square->setVisible(false);
-        square->onMousePress([=](tgui::Vector2f pos){ onSelectionSquarePress(square, pos); });
+        square->onMousePress([this,&square](tgui::Vector2f pos){ onSelectionSquarePress(square, pos); });
         m_scrollablePanel->add(square);
     }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-tgui::String Form::addWidget(tgui::Widget::Ptr widget, tgui::Container* parent, bool selectNewWidget)
+tgui::String Form::addWidget(const tgui::Widget::Ptr& widget, tgui::Container* parent, bool selectNewWidget)
 {
     const tgui::String id = tgui::String::fromNumber(widget.get());
     m_widgets[id] = std::make_shared<WidgetInfo>(widget);
@@ -517,23 +509,25 @@ std::shared_ptr<WidgetInfo> Form::getWidget(const tgui::String& id) const
 std::shared_ptr<WidgetInfo> Form::getWidgetByName(const tgui::String& name) const
 {
     if (name == m_filename)
-        return std::shared_ptr<WidgetInfo>();
+        return {};
 
     const auto it = std::find_if(
         m_widgets.begin(),
         m_widgets.end(),
         [&name](const auto& idAndWidgetInfo)
         {
-            const auto& widgetIndo = idAndWidgetInfo.second;
-            if (widgetIndo)
+            const auto& widgetInfo = idAndWidgetInfo.second;
+            if (widgetInfo)
                 return idAndWidgetInfo.second->name == name;
             else
                 return false;
         }
     );
 
-    assert(it != m_widgets.end());
-    return it->second;
+    if (it != m_widgets.end())
+        return it->second;
+    else
+        return {};
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -641,6 +635,10 @@ void Form::selectParent()
     if (!m_selectedWidget)
         return;
 
+    // If we were dragging a widget then stop the drag
+    m_draggingWidget = false;
+    m_draggingSelectionSquare = nullptr;
+
     // If the widget was added directly to the form then select the form
     if (m_selectedWidget->ptr->getParent() == m_widgetsContainer.get())
     {
@@ -665,6 +663,7 @@ void Form::mouseReleased()
 {
     m_draggingWidget = false;
     m_draggingSelectionSquare = nullptr;
+    m_onDragSaved = false;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -693,16 +692,34 @@ void Form::arrowKeyPressed(const tgui::Event::KeyEvent& keyEvent)
 
     auto selectedWidget = m_selectedWidget->ptr;
 
-    if (keyEvent.shift && keyEvent.control)
+#ifdef TGUI_SYSTEM_MACOS
+    const auto controlPressed = keyEvent.system;
+#else
+    const auto controlPressed = keyEvent.control;
+#endif
+
+    if (keyEvent.shift && controlPressed)
     {
         if (keyEvent.code == tgui::Event::KeyboardKey::Left)
+        {
+            m_guiBuilder->saveUndoState(GuiBuilder::UndoType::Move);
             selectedWidget->setPosition({selectedWidget->getPosition().x - MOVE_STEP, selectedWidget->getPositionLayout().y});
+        }
         else if (keyEvent.code == tgui::Event::KeyboardKey::Right)
+        {
+            m_guiBuilder->saveUndoState(GuiBuilder::UndoType::Move);
             selectedWidget->setPosition({selectedWidget->getPosition().x + MOVE_STEP, selectedWidget->getPositionLayout().y});
+        }
         else if (keyEvent.code == tgui::Event::KeyboardKey::Up)
+        {
+            m_guiBuilder->saveUndoState(GuiBuilder::UndoType::Move);
             selectedWidget->setPosition({selectedWidget->getPositionLayout().x, selectedWidget->getPosition().y - MOVE_STEP});
+        }
         else if (keyEvent.code == tgui::Event::KeyboardKey::Down)
+        {
+            m_guiBuilder->saveUndoState(GuiBuilder::UndoType::Move);
             selectedWidget->setPosition({selectedWidget->getPositionLayout().x, selectedWidget->getPosition().y + MOVE_STEP});
+        }
 
         setChanged(true);
         updateSelectionSquarePositions();
@@ -711,28 +728,52 @@ void Form::arrowKeyPressed(const tgui::Event::KeyEvent& keyEvent)
     else if (keyEvent.shift)
     {
         if (keyEvent.code == tgui::Event::KeyboardKey::Left)
+        {
+            m_guiBuilder->saveUndoState(GuiBuilder::UndoType::Resize);
             selectedWidget->setSize({selectedWidget->getSize().x - 1, selectedWidget->getSizeLayout().y});
+        }
         else if (keyEvent.code == tgui::Event::KeyboardKey::Right)
+        {
+            m_guiBuilder->saveUndoState(GuiBuilder::UndoType::Move);
             selectedWidget->setSize({selectedWidget->getSize().x + 1, selectedWidget->getSizeLayout().y});
+        }
         else if (keyEvent.code == tgui::Event::KeyboardKey::Up)
+        {
+            m_guiBuilder->saveUndoState(GuiBuilder::UndoType::Move);
             selectedWidget->setSize({selectedWidget->getSizeLayout().x, selectedWidget->getSize().y - 1});
+        }
         else if (keyEvent.code == tgui::Event::KeyboardKey::Down)
+        {
+            m_guiBuilder->saveUndoState(GuiBuilder::UndoType::Move);
             selectedWidget->setSize({selectedWidget->getSizeLayout().x, selectedWidget->getSize().y + 1});
+        }
 
         setChanged(true);
         updateSelectionSquarePositions();
         m_guiBuilder->reloadProperties();
     }
-    else if (keyEvent.control)
+    else if (controlPressed)
     {
         if (keyEvent.code == tgui::Event::KeyboardKey::Left)
+        {
+            m_guiBuilder->saveUndoState(GuiBuilder::UndoType::Move);
             selectedWidget->setPosition({selectedWidget->getPosition().x - 1, selectedWidget->getPositionLayout().y});
+        }
         else if (keyEvent.code == tgui::Event::KeyboardKey::Right)
+        {
+            m_guiBuilder->saveUndoState(GuiBuilder::UndoType::Move);
             selectedWidget->setPosition({selectedWidget->getPosition().x + 1, selectedWidget->getPositionLayout().y});
+        }
         else if (keyEvent.code == tgui::Event::KeyboardKey::Up)
+        {
+            m_guiBuilder->saveUndoState(GuiBuilder::UndoType::Move);
             selectedWidget->setPosition({selectedWidget->getPositionLayout().x, selectedWidget->getPosition().y - 1});
+        }
         else if (keyEvent.code == tgui::Event::KeyboardKey::Down)
+        {
+            m_guiBuilder->saveUndoState(GuiBuilder::UndoType::Move);
             selectedWidget->setPosition({selectedWidget->getPositionLayout().x, selectedWidget->getPosition().y + 1});
+        }
 
         setChanged(true);
         updateSelectionSquarePositions();
@@ -871,7 +912,7 @@ void Form::load()
     // Parse the file from memory
     auto rootNode = tgui::DataIO::parse(inStream);
 
-    // If the file was created with TGUI 0.8 then convert it into a valid TGUI 0.9 form
+    // If the file was created with TGUI 0.8 then convert it into a valid TGUI 0.9/0.10 form
     importOldForm(rootNode);
 
     // Turn all paths into absolute paths, using either the form file or the gui builder as base path
@@ -922,6 +963,23 @@ void Form::save()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//Saves state to internal storage
+std::stringstream Form::saveState()
+{
+    std::stringstream outStream;
+    m_widgetsContainer->saveWidgetsToStream(outStream);
+    return outStream;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Loads state from internal storage
+void Form::loadState(std::stringstream& state)
+{
+    m_widgetsContainer->loadWidgetsFromStream(state);
+    importLoadedWidgets(m_widgetsContainer);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void Form::updateAlignmentLines()
 {
@@ -960,24 +1018,24 @@ void Form::updateAlignmentLines()
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void Form::importLoadedWidgets(tgui::Container::Ptr parent)
+void Form::importLoadedWidgets(const tgui::Container::Ptr& parent)
 {
     const auto& widgets = parent->getWidgets();
-    for (std::size_t i = 0; i < widgets.size(); ++i)
+    for (const auto& widget : widgets)
     {
-        const tgui::String id = tgui::String::fromNumber(widgets[i].get());
-        m_widgets[id] = std::make_shared<WidgetInfo>(widgets[i]);
-        m_widgets[id]->name = widgets[i]->getWidgetName();
+        const tgui::String id = tgui::String::fromNumber(widget.get());
+        m_widgets[id] = std::make_shared<WidgetInfo>(widget);
+        m_widgets[id]->name = widget->getWidgetName();
         m_widgets[id]->theme = "Custom";
 
-        if (widgets[i]->isContainer())
-            importLoadedWidgets(std::static_pointer_cast<tgui::Container>(widgets[i]));
+        if (widget->isContainer())
+            importLoadedWidgets(std::static_pointer_cast<tgui::Container>(widget));
     }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void Form::onSelectionSquarePress(tgui::Button::Ptr square, tgui::Vector2f pos)
+void Form::onSelectionSquarePress(const tgui::Button::Ptr& square, tgui::Vector2f pos)
 {
     m_draggingSelectionSquare = square;
     m_draggingPos = square->getPosition() + pos;
@@ -985,7 +1043,7 @@ void Form::onSelectionSquarePress(tgui::Button::Ptr square, tgui::Vector2f pos)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-tgui::Widget::Ptr Form::getWidgetBelowMouse(tgui::Container::Ptr parent, tgui::Vector2f pos)
+tgui::Widget::Ptr Form::getWidgetBelowMouse(const tgui::Container::Ptr& parent, tgui::Vector2f pos)
 {
     // Loop through widgets in reverse order to find the top one in case of overlapping widgets
     const auto& widgets = parent->getWidgets();
@@ -1042,6 +1100,13 @@ void Form::onDrag(tgui::Vector2i mousePos)
 
     if (m_draggingWidget)
     {
+        // Saves state for undo recall
+        if (!m_onDragSaved)
+        {
+            m_guiBuilder->saveUndoState(GuiBuilder::UndoType::Move);
+            m_onDragSaved = true;
+        }
+
         while (pos.x - m_draggingPos.x >= MOVE_STEP)
         {
             selectedWidget->setPosition({selectedWidget->getPosition().x + MOVE_STEP, selectedWidget->getPositionLayout().y});
@@ -1073,6 +1138,12 @@ void Form::onDrag(tgui::Vector2i mousePos)
 
     if (m_draggingSelectionSquare)
     {
+        if (!m_onDragSaved)
+        {
+            m_guiBuilder->saveUndoState(GuiBuilder::UndoType::Resize);
+            m_onDragSaved = true;
+        }
+
         if (m_draggingSelectionSquare == m_selectionSquares[1]) // Top
         {
             while (pos.y - m_draggingPos.y >= MOVE_STEP)
@@ -1242,7 +1313,7 @@ void Form::onDrag(tgui::Vector2i mousePos)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void Form::selectWidget(std::shared_ptr<WidgetInfo> widget)
+void Form::selectWidget(const std::shared_ptr<WidgetInfo>& widget)
 {
     if (m_selectedWidget != widget)
     {
@@ -1273,8 +1344,14 @@ std::vector<std::pair<tgui::Vector2f, tgui::Vector2f>> Form::getAlignmentLines()
     if (!m_selectedWidget)
         return lines;
 
+#ifdef TGUI_SYSTEM_MACOS
+    const auto controlModifier = tgui::Event::KeyModifier::System;
+#else
+    const auto controlModifier = tgui::Event::KeyModifier::Control;
+#endif
+
     if (!m_draggingWidget && !m_draggingSelectionSquare
-     && !tgui::getBackend()->isKeyboardModifierPressed(tgui::Event::KeyModifier::Control)
+     && !tgui::getBackend()->isKeyboardModifierPressed(controlModifier)
      && !tgui::getBackend()->isKeyboardModifierPressed(tgui::Event::KeyModifier::Shift))
         return lines;
 

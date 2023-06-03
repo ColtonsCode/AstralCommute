@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -30,16 +30,6 @@
 namespace tgui
 {
     SignalManager::Ptr SignalManager::m_manager = std::make_shared<SignalManager>();
-
-    SignalManager::SignalManager()
-    {
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    SignalManager::~SignalManager()
-    {
-    }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -115,7 +105,7 @@ namespace tgui
                 else
                     id = widgetPtr->getSignal(it.second.signalName).connectEx(it.second.func.second);
 
-                m_connectedSignals.push_back({it.first, widgetPtr, id});
+                m_connectedSignals.emplace_back(it.first, widgetPtr, id);
             }
         }
     }
@@ -175,7 +165,7 @@ namespace tgui
             else
                 id = widget->getSignal(handle.signalName).connectEx(handle.func.second);
 
-            m_connectedSignals.push_back({sid, it, id});
+            m_connectedSignals.emplace_back(sid, it, id);
         }
     }
 

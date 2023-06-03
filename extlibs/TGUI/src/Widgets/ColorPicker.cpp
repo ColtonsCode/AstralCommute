@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -26,7 +26,14 @@
 #include <TGUI/Widgets/ColorPicker.hpp>
 #include <TGUI/Widgets/EditBox.hpp>
 #include <TGUI/Widgets/Label.hpp>
-#include <cmath>
+
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cmath>
+
+    #if defined(__cpp_lib_math_constants) && (__cpp_lib_math_constants >= 201907L)
+        #include <numbers>
+    #endif
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -36,7 +43,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    static Color hsv2rgb(float h, float s, float v)
+    TGUI_NODISCARD static Color hsv2rgb(float h, float s, float v)
     {
         /**
          * vec3 hsv2rgb(vec3 c) {
@@ -45,9 +52,9 @@ namespace tgui
          *      return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
          * }
         **/
-        auto fract = [](float x) { return x - std::floor(x); };
-        auto mix = [](float x, float y, float a) { return x * (1.0f - a) + y * a; };
-        auto clamp = [](float x, float minVal, float maxVal) {
+        const auto fract = [](float x) { return x - std::floor(x); };
+        const auto mix = [](float x, float y, float a) { return x * (1.0f - a) + y * a; };
+        const auto clamp = [](float x, float minVal, float maxVal) {
             return std::min(std::max(x, minVal), maxVal);
         };
 
@@ -55,15 +62,15 @@ namespace tgui
         s = clamp(s, 0.f, 1.f);
         v = clamp(v, 0.f, 1.f);
 
-        float K[] = {1.0f, 2.0f / 3.0f, 1.0f / 3.0f, 3.0f};
+        const float K[] = {1.0f, 2.0f / 3.0f, 1.0f / 3.0f, 3.0f};
 
-        float p[] = {std::abs(fract(h + K[0]) * 6.0f - K[3]),
-                     std::abs(fract(h + K[1]) * 6.0f - K[3]),
-                     std::abs(fract(h + K[2]) * 6.0f - K[3])};
+        const float p[] = {std::abs(fract(h + K[0]) * 6.0f - K[3]),
+                           std::abs(fract(h + K[1]) * 6.0f - K[3]),
+                           std::abs(fract(h + K[2]) * 6.0f - K[3])};
 
-        float C[] = {v * mix(K[0], clamp(p[0] - K[0], 0.f, 1.f), s),
-                     v * mix(K[0], clamp(p[1] - K[0], 0.f, 1.f), s),
-                     v * mix(K[0], clamp(p[2] - K[0], 0.f, 1.f), s)};
+        const float C[] = {v * mix(K[0], clamp(p[0] - K[0], 0.f, 1.f), s),
+                           v * mix(K[0], clamp(p[1] - K[0], 0.f, 1.f), s),
+                           v * mix(K[0], clamp(p[2] - K[0], 0.f, 1.f), s)};
 
         return {static_cast<std::uint8_t>(clamp(255 * C[0], 0, 255)),
                 static_cast<std::uint8_t>(clamp(255 * C[1], 0, 255)),
@@ -72,7 +79,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    static Color calculateColor(Vector2f position, float v, float a)
+    TGUI_NODISCARD static Color calculateColor(Vector2f position, float v, float a)
     {
         /**
          * vec2 position = ( gl_FragCoord.xy / resolution.xy );
@@ -92,17 +99,21 @@ namespace tgui
          * gl_FragColor.a = 1.0;
          */
 
+#if defined(__cpp_lib_math_constants) && (__cpp_lib_math_constants >= 201907L)
+        const float pi = std::numbers::pi_v<float>;
+#else
+        const float pi = 3.14159265359f;
+#endif
+
         auto length = [](Vector2f x) {
             return std::sqrt(x.x * x.x + x.y * x.y);
         };
 
         float s = length(position);
 
-        float h = atan2(position.y, -position.x);
+        float h = std::atan2(position.y, -position.x);
 
-        constexpr float Pi = 3.14159265359f;
-
-        h /= 2.f * Pi;
+        h /= 2.f * pi;
         h += 0.5f;
 
         return Color::applyOpacity(hsv2rgb(h, s, v), a);
@@ -110,16 +121,22 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    static float logInvCurve(float x)
+    TGUI_NODISCARD static float logInvCurve(float x)
     {
         /**
          * 0.1  - normal curve
          * e-1  - e curve (e^x-1)/(e-1)
          * +    - bigger curve
          */
-        const double a = std::exp(1.0) - 1.0;
-        return static_cast<float>((std::exp(std::log(a + 1.0) * static_cast<double>(x)) - 1.0) / a);
+        const double a = std::expm1(1.0);
+        return static_cast<float>(std::expm1(std::log1p(a) * static_cast<double>(x)) / a);
     }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char ColorPicker::StaticWidgetType[];
+#endif
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -133,9 +150,9 @@ namespace tgui
         }
 
         setTitleButtons(ChildWindow::TitleButton::None);
-        Container::setTextSize(getGlobalTextSize());
+        setTextSize(getGlobalTextSize());
 
-        auto pixels = std::make_unique<std::uint8_t[]>(colorWheelSize * colorWheelSize * 4);
+        auto pixels = MakeUniqueForOverwrite<std::uint8_t[]>(static_cast<std::size_t>(colorWheelSize) * colorWheelSize * 4);
         for (unsigned int y = 0; y < colorWheelSize; ++y)
         {
             for (unsigned int x = 0; x < colorWheelSize; ++x)
@@ -166,51 +183,63 @@ namespace tgui
         m_colorWheelSprite.setTexture(m_colorWheelTexture);
         pixels = nullptr;
 
-        Container::add(Label::create("R"), "#TGUI_INTERNAL$ColorPickerLR#");
-        Container::add(m_red, "#TGUI_INTERNAL$ColorPickerRed#");
+        m_red->setVerticalScroll(false);
+        m_green->setVerticalScroll(false);
+        m_blue->setVerticalScroll(false);
+        m_alpha->setVerticalScroll(false);
+        m_red->setWidth(200);
+        m_green->setWidth(200);
+        m_blue->setWidth(200);
+        m_alpha->setWidth(200);
+
+        add(Label::create("R"), "#TGUI_INTERNAL$ColorPickerLR#");
+        add(m_red, "#TGUI_INTERNAL$ColorPickerRed#");
         auto redBox = EditBox::create();
         redBox->setSize(50, 20);
         redBox->setInputValidator(EditBox::Validator::Int);
-        Container::add(redBox, "#TGUI_INTERNAL$ColorPickerRedBox#");
+        add(redBox, "#TGUI_INTERNAL$ColorPickerRedBox#");
 
-        Container::add(Label::create("G"), "#TGUI_INTERNAL$ColorPickerLG#");
-        Container::add(m_green, "#TGUI_INTERNAL$ColorPickerGreen#");
+        add(Label::create("G"), "#TGUI_INTERNAL$ColorPickerLG#");
+        add(m_green, "#TGUI_INTERNAL$ColorPickerGreen#");
         auto greenBox = EditBox::create();
         greenBox->setSize(50, 20);
         greenBox->setInputValidator(EditBox::Validator::Int);
-        Container::add(greenBox, "#TGUI_INTERNAL$ColorPickerGreenBox#");
+        add(greenBox, "#TGUI_INTERNAL$ColorPickerGreenBox#");
 
-        Container::add(Label::create("B"), "#TGUI_INTERNAL$ColorPickerLB#");
-        Container::add(m_blue, "#TGUI_INTERNAL$ColorPickerBlue#");
+        add(Label::create("B"), "#TGUI_INTERNAL$ColorPickerLB#");
+        add(m_blue, "#TGUI_INTERNAL$ColorPickerBlue#");
         auto blueBox = EditBox::create();
         blueBox->setSize(50, 20);
         blueBox->setInputValidator(EditBox::Validator::Int);
-        Container::add(blueBox, "#TGUI_INTERNAL$ColorPickerBlueBox#");
+        add(blueBox, "#TGUI_INTERNAL$ColorPickerBlueBox#");
 
-        Container::add(Label::create("A"), "#TGUI_INTERNAL$ColorPickerLA#");
-        Container::add(m_alpha, "#TGUI_INTERNAL$ColorPickerAlpha#");
+        add(Label::create("A"), "#TGUI_INTERNAL$ColorPickerLA#");
+        add(m_alpha, "#TGUI_INTERNAL$ColorPickerAlpha#");
         auto alphaBox = EditBox::create();
         alphaBox->setSize(50, 20);
         alphaBox->setInputValidator(EditBox::Validator::Int);
-        Container::add(alphaBox, "#TGUI_INTERNAL$ColorPickerAlphaBox#");
+        add(alphaBox, "#TGUI_INTERNAL$ColorPickerAlphaBox#");
 
-        Container::add(m_value, "#TGUI_INTERNAL$ColorPickerValue#");
+        add(m_value, "#TGUI_INTERNAL$ColorPickerValue#");
         m_value->setValue(m_value->getMaximum());
         m_value->setVerticalScroll(true);
+        m_value->setHeight(200);
 
-        Container::add(Label::create("Last:"), "#TGUI_INTERNAL$ColorPickerLabelLast#");
-        Container::add(m_last, "#TGUI_INTERNAL$ColorPickerLast#");
-        Container::add(Label::create("Current:"), "#TGUI_INTERNAL$ColorPickerLabelCurrent#");
-        Container::add(m_current, "#TGUI_INTERNAL$ColorPickerCurrent#");
+        add(Label::create("Last:"), "#TGUI_INTERNAL$ColorPickerLabelLast#");
+        add(m_last, "#TGUI_INTERNAL$ColorPickerLast#");
+        add(Label::create("Current:"), "#TGUI_INTERNAL$ColorPickerLabelCurrent#");
+        add(m_current, "#TGUI_INTERNAL$ColorPickerCurrent#");
 
         m_current->getRenderer()->setBackgroundColor(Color::Black);
         m_last->getRenderer()->setBackgroundColor(Color::Black);
+        m_current->getRenderer()->setBorders({0});
+        m_last->getRenderer()->setBorders({0});
 
-        Container::add(Button::create("Reset"), "#TGUI_INTERNAL$ColorPickerReset#");
-        Container::add(Button::create("OK"), "#TGUI_INTERNAL$ColorPickerOK#");
-        Container::add(Button::create("Cancel"), "#TGUI_INTERNAL$ColorPickerCancel#");
+        add(Button::create("Reset"), "#TGUI_INTERNAL$ColorPickerReset#");
+        add(Button::create("OK"), "#TGUI_INTERNAL$ColorPickerOK#");
+        add(Button::create("Cancel"), "#TGUI_INTERNAL$ColorPickerCancel#");
 
-        ChildWindow::setClientSize({535, 220});
+        ChildWindow::setClientSize({535, 200 + get("#TGUI_INTERNAL$ColorPickerOK#")->getSize().y});
 
         rearrange();
         identifyButtonsAndConnect();
@@ -218,45 +247,45 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    ColorPicker::ColorPicker(const ColorPicker &other) :
-            ChildWindow{other},
-            onColorChange{other.onColorChange},
-            onOkPress{other.onOkPress},
-            m_colorWheelTexture{other.m_colorWheelTexture},
-            m_colorWheelSprite{other.m_colorWheelSprite},
-            m_red{nullptr},
-            m_green{nullptr},
-            m_blue{nullptr},
-            m_alpha{nullptr},
-            m_value{nullptr},
-            m_last{nullptr},
-            m_current{nullptr}
+    ColorPicker::ColorPicker(const ColorPicker& other) :
+        ChildWindow{other},
+        onColorChange{other.onColorChange},
+        onOkPress{other.onOkPress},
+        m_colorWheelTexture{other.m_colorWheelTexture},
+        m_colorWheelSprite{other.m_colorWheelSprite},
+        m_red{nullptr},
+        m_green{nullptr},
+        m_blue{nullptr},
+        m_alpha{nullptr},
+        m_value{nullptr},
+        m_last{nullptr},
+        m_current{nullptr}
     {
         identifyButtonsAndConnect();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    ColorPicker::ColorPicker(ColorPicker &&other) :
-            ChildWindow{std::move(other)},
-            onColorChange{std::move(other.onColorChange)},
-            onOkPress{std::move(other.onOkPress)},
-            m_colorWheelTexture{std::move(other.m_colorWheelTexture)},
-            m_colorWheelSprite{std::move(other.m_colorWheelSprite)},
-            m_red{nullptr},
-            m_green{nullptr},
-            m_blue{nullptr},
-            m_alpha{nullptr},
-            m_value{nullptr},
-            m_last{nullptr},
-            m_current{nullptr}
+    ColorPicker::ColorPicker(ColorPicker&& other) noexcept :
+        ChildWindow{std::move(other)},
+        onColorChange{std::move(other.onColorChange)},
+        onOkPress{std::move(other.onOkPress)},
+        m_colorWheelTexture{std::move(other.m_colorWheelTexture)},
+        m_colorWheelSprite{std::move(other.m_colorWheelSprite)},
+        m_red{nullptr},
+        m_green{nullptr},
+        m_blue{nullptr},
+        m_alpha{nullptr},
+        m_value{nullptr},
+        m_last{nullptr},
+        m_current{nullptr}
     {
         identifyButtonsAndConnect();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    ColorPicker &ColorPicker::operator=(const ColorPicker &other)
+    ColorPicker& ColorPicker::operator=(const ColorPicker& other)
     {
         if (this != &other)
         {
@@ -276,16 +305,15 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    ColorPicker &ColorPicker::operator=(ColorPicker &&other)
+    ColorPicker& ColorPicker::operator=(ColorPicker&& other) noexcept
     {
         if (this != &other)
         {
-            ChildWindow::operator=(std::move(other));
-
             onColorChange = std::move(other.onColorChange);
             onOkPress = std::move(other.onOkPress);
             m_colorWheelTexture = std::move(other.m_colorWheelTexture);
-            m_colorWheelSprite = std::move(other.m_colorWheelSprite),
+            m_colorWheelSprite = std::move(other.m_colorWheelSprite);
+            ChildWindow::operator=(std::move(other));
 
             identifyButtonsAndConnect();
         }
@@ -295,7 +323,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    ColorPicker::Ptr ColorPicker::create(String title, Color color)
+    ColorPicker::Ptr ColorPicker::create(const String& title, Color color)
     {
         auto colorPicker = std::make_shared<ColorPicker>();
         colorPicker->setTitle(title);
@@ -306,7 +334,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    ColorPicker::Ptr ColorPicker::copy(ColorPicker::ConstPtr colorPicker)
+    ColorPicker::Ptr ColorPicker::copy(const ColorPicker::ConstPtr& colorPicker)
     {
         if (colorPicker)
             return std::static_pointer_cast<ColorPicker>(colorPicker->clone());
@@ -337,14 +365,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    const ColorPickerRenderer *ColorPicker::getRenderer() const
-    {
-        return aurora::downcast<const ColorPickerRenderer *>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    void ColorPicker::setColor(const Color &color)
+    void ColorPicker::setColor(const Color& color)
     {
         const auto colorLast = m_current->getRenderer()->getBackgroundColor();
         m_last->getRenderer()->setBackgroundColor(color);
@@ -370,9 +391,9 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ColorPicker::leftMousePressed(Vector2f pos)
+    bool ColorPicker::leftMousePressed(Vector2f pos)
     {
-        ChildWindow::leftMousePressed(pos);
+        bool isDragging = ChildWindow::leftMousePressed(pos);
 
         const Vector2f originalPos = pos;
         pos -= getPosition() + getChildWidgetsOffset();
@@ -393,11 +414,14 @@ namespace tgui
             if (length(position) > 1.f)
             {
                 m_colorRead = false;
-                return;
+                return false;
             }
 
             mouseMoved(originalPos);
+            isDragging = true;
         }
+
+        return isDragging;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -517,30 +541,33 @@ namespace tgui
 
     void ColorPicker::rendererChanged(const String& property)
     {
-        if (property == "Button")
+        if (property == U"Button")
         {
-            const auto &renderer = getSharedRenderer()->getButton();
+            const auto& renderer = getSharedRenderer()->getButton();
 
-            get<Button>("#TGUI_INTERNAL$ColorPickerReset#")->setRenderer(renderer);
-            get<Button>("#TGUI_INTERNAL$ColorPickerOk#")->setRenderer(renderer);
-            get<Button>("#TGUI_INTERNAL$ColorPickerCancel#")->setRenderer(renderer);
+            // During loading from file, the renderer is loaded before the child widgets are loaded.
+            // In this exceptional case, we shouldn't try to set the renderer. The buttons will have their renderer in the form file anyway.
+            if (get("#TGUI_INTERNAL$ColorPickerOK#"))
+            {
+                get<Button>("#TGUI_INTERNAL$ColorPickerReset#")->setRenderer(renderer);
+                get<Button>("#TGUI_INTERNAL$ColorPickerOK#")->setRenderer(renderer);
+                get<Button>("#TGUI_INTERNAL$ColorPickerCancel#")->setRenderer(renderer);
+            }
         }
-        else if (property == "Label")
+        else if (property == U"Label")
         {
-            const auto &renderer = getSharedRenderer()->getLabel();
+            const auto& renderer = getSharedRenderer()->getLabel();
 
-            for (const auto &it : getWidgets())
+            for (const auto& it : getWidgets())
             {
                 auto label = std::dynamic_pointer_cast<Label>(it);
                 if (label)
-                {
                     label->setRenderer(renderer);
-                }
             }
         }
-        else if (property == "Slider")
+        else if (property == U"Slider")
         {
-            const auto &renderer = getSharedRenderer()->getSlider();
+            const auto& renderer = getSharedRenderer()->getSlider();
 
             m_red->setRenderer(renderer);
             m_green->setRenderer(renderer);
@@ -549,11 +576,10 @@ namespace tgui
 
             m_value->setRenderer(renderer);
         }
-        else if ((property == "Opacity") || (property == "OpacityDisabled"))
+        else if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
-            Widget::rendererChanged(property);
-            m_colorWheelSprite.setOpacity(m_opacityCached);
             ChildWindow::rendererChanged(property);
+            m_colorWheelSprite.setOpacity(m_opacityCached);
         }
         else
             ChildWindow::rendererChanged(property);
@@ -561,7 +587,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    std::unique_ptr<DataIO::Node> ColorPicker::save(SavingRenderersMap &renderers) const
+    std::unique_ptr<DataIO::Node> ColorPicker::save(SavingRenderersMap& renderers) const
     {
         // Labels, buttons and sliders are saved indirectly by saving the child window
         return ChildWindow::save(renderers);
@@ -569,7 +595,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ColorPicker::load(const std::unique_ptr<DataIO::Node> &node, const LoadingRenderersMap &renderers)
+    void ColorPicker::load(const std::unique_ptr<DataIO::Node>& node, const LoadingRenderersMap& renderers)
     {
         // Remove the widgets that the ColorPicker constructor creates because they will be created when loading the child window
         removeAllWidgets();
@@ -581,7 +607,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ColorPicker::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void ColorPicker::draw(BackendRenderTarget& target, RenderStates states) const
     {
         ChildWindow::draw(target, states);
 
@@ -615,19 +641,19 @@ namespace tgui
 
         redBox->onTextChange.disconnectAll();
         redBox->setText(String(m_red->getValue()));
-        redBox->onTextChange([this](const String &s) { m_red->setValue(s.toFloat()); });
+        redBox->onTextChange([this](const String& s) { m_red->setValue(s.toFloat()); });
 
         greenBox->onTextChange.disconnectAll();
         greenBox->setText(String(m_green->getValue()));
-        greenBox->onTextChange([this](const String &s) { m_green->setValue(s.toFloat()); });
+        greenBox->onTextChange([this](const String& s) { m_green->setValue(s.toFloat()); });
 
         blueBox->onTextChange.disconnectAll();
         blueBox->setText(String(m_blue->getValue()));
-        blueBox->onTextChange([this](const String &s) { m_blue->setValue(s.toFloat()); });
+        blueBox->onTextChange([this](const String& s) { m_blue->setValue(s.toFloat()); });
 
         alphaBox->onTextChange.disconnectAll();
         alphaBox->setText(String(m_alpha->getValue()));
-        alphaBox->onTextChange([this](const String &s) { m_alpha->setValue(s.toFloat()); });
+        alphaBox->onTextChange([this](const String& s) { m_alpha->setValue(s.toFloat()); });
 
         m_red->onValueChange.disconnectAll();
         m_red->onValueChange(
@@ -694,6 +720,13 @@ namespace tgui
         m_value->onValueChange.disconnectAll();
         m_value->onValueChange(valueChangeFunc);
         valueChangeFunc(m_value->getValue());
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr ColorPicker::clone() const
+    {
+        return std::make_shared<ColorPicker>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

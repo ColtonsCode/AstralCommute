@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -30,13 +30,15 @@
 #include <TGUI/Duration.hpp>
 #include <TGUI/Optional.hpp>
 
-#include <functional>
-#include <memory>
-#include <vector>
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <functional>
+    #include <memory>
+    #include <vector>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Executes callbacks after a certain amount of time
@@ -51,7 +53,7 @@ namespace tgui
     {
     public:
 
-        typedef std::shared_ptr<Timer> Ptr; // Only provided for potential consistence in user code
+        using Ptr = std::shared_ptr<Timer>; // Only provided for potential consistence in user code
 
         Timer(const Timer&) = delete;
         Timer& operator=(const Timer&) = delete;
@@ -66,7 +68,7 @@ namespace tgui
         ///
         /// @return The created timer that can be used to start/stop it later or change the interval.
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        static std::shared_ptr<Timer> create(const std::function<void()>& callback, Duration interval, bool enable = true);
+        TGUI_NODISCARD static std::shared_ptr<Timer> create(const std::function<void()>& callback, Duration interval, bool enable = true);
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -78,7 +80,7 @@ namespace tgui
         ///
         /// @return The created timer that can be used to start/stop it later or change the interval.
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        static std::shared_ptr<Timer> create(const std::function<void(std::shared_ptr<Timer>)>& callback, Duration interval, bool enable = true);
+        TGUI_NODISCARD static std::shared_ptr<Timer> create(const std::function<void(std::shared_ptr<Timer>)>& callback, Duration interval, bool enable = true);
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -90,7 +92,7 @@ namespace tgui
         /// There is no way to cancel a scheduled call. If you need this functionality then you should create a proper timer
         /// (with the create function) which you then stop when the callback happens.
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        static void scheduleCallback(std::function<void()> callback, Duration interval = Duration());
+        static void scheduleCallback(const std::function<void()>& callback, Duration interval = Duration());
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -105,7 +107,7 @@ namespace tgui
         /// @brief Returns the interval at which a timer callback is send
         /// @return How often the callback should be called
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Duration getInterval() const;
+        TGUI_NODISCARD Duration getInterval() const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -120,7 +122,7 @@ namespace tgui
         /// @brief Returns whether the timer is running
         /// @return Is the timer currently enabled?
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        bool isEnabled() const;
+        TGUI_NODISCARD bool isEnabled() const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -159,7 +161,7 @@ namespace tgui
         /// @brief Returns the duration until the next moment a callback function has to be send.
         /// @return Time until next time expires or empty object if there are no timers
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        static Optional<Duration> getNextScheduledTime();
+        TGUI_NODISCARD static Optional<Duration> getNextScheduledTime();
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

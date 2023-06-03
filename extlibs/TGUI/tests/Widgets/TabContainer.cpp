@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,8 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Widgets/TabContainer.hpp>
-#include <TGUI/Widgets/Panel.hpp>
 
 TEST_CASE("[tabContainer]")
 {
@@ -142,72 +140,72 @@ TEST_CASE("[tabContainer]")
             tabContainer->setSize({ 300, 100 });
             tabContainer->setTabsHeight(20);
 
-            unsigned int tabContainerelectedCount = 0;
-            tabContainer->onSelectionChanged(&genericCallback, std::ref(tabContainerelectedCount));
+            unsigned int tabContainerSelectedCount = 0;
+            tabContainer->onSelectionChanged(&genericCallback, std::ref(tabContainerSelectedCount));
 
             tabContainer->addTab("1");
             tabContainer->addTab("2");
-            REQUIRE(tabContainerelectedCount == 2);
+            REQUIRE(tabContainerSelectedCount == 2);
 
             tabContainer->addTab("3", false);
-            REQUIRE(tabContainerelectedCount == 2);
+            REQUIRE(tabContainerSelectedCount == 2);
 
             tabContainer->select(2);
-            REQUIRE(tabContainerelectedCount == 3);
+            REQUIRE(tabContainerSelectedCount == 3);
 
-            tabContainer->select(2, false);
-            REQUIRE(tabContainerelectedCount == 3);
+            tabContainer->select(2);
+            REQUIRE(tabContainerSelectedCount == 3);
 
             tabContainer->select(0);
-            REQUIRE(tabContainerelectedCount == 4);
+            REQUIRE(tabContainerSelectedCount == 4);
 
             const tgui::Vector2f mousePos1{ 200, 10 };
             tabContainer->leftMousePressed(mousePos1);
             tabContainer->leftMouseReleased(mousePos1);
-            REQUIRE(tabContainer->getTabText(tabContainer->getSelectedIndex()) == "3");
-            REQUIRE(tabContainerelectedCount == 5);
+            REQUIRE(tabContainer->getTabText(static_cast<std::size_t>(tabContainer->getSelectedIndex())) == "3");
+            REQUIRE(tabContainerSelectedCount == 5);
 
             const tgui::Vector2f mousePos2{ 199, 10 };
             tabContainer->leftMousePressed(mousePos2);
             tabContainer->leftMouseReleased(mousePos2);
-            REQUIRE(tabContainer->getTabText(tabContainer->getSelectedIndex()) == "2");
-            REQUIRE(tabContainerelectedCount == 6);
+            REQUIRE(tabContainer->getTabText(static_cast<std::size_t>(tabContainer->getSelectedIndex())) == "2");
+            REQUIRE(tabContainerSelectedCount == 6);
 
             tabContainer->leftMousePressed(mousePos2);
             tabContainer->leftMouseReleased(mousePos2);
-            REQUIRE(tabContainerelectedCount == 6);
+            REQUIRE(tabContainerSelectedCount == 6);
         }
 
         SECTION("SelectionChanging")
         {
-            unsigned int tabContainerelectedCount = 0;
-            tabContainer->onSelectionChanging([&tabContainerelectedCount](int idx, bool* Vetoed)
+            unsigned int tabContainerSelectedCount = 0;
+            tabContainer->onSelectionChanging([&tabContainerSelectedCount](int idx, bool* Vetoed)
             {
                 if (idx == 2)
                 {
                     *Vetoed = true;
                 }
-                tabContainerelectedCount++;
+                tabContainerSelectedCount++;
             });
 
             tabContainer->addTab("1");
             tabContainer->addTab("2");
-            REQUIRE(tabContainerelectedCount == 2);
+            REQUIRE(tabContainerSelectedCount == 2);
 
             tabContainer->addTab("3", false);
-            REQUIRE(tabContainerelectedCount == 2);
+            REQUIRE(tabContainerSelectedCount == 2);
 
             tabContainer->select(2);
             REQUIRE(tabContainer->getSelectedIndex() != 2);
-            REQUIRE(tabContainerelectedCount == 3);
+            REQUIRE(tabContainerSelectedCount == 3);
 
-            tabContainer->select(0, false);
-            REQUIRE(tabContainerelectedCount == 3);
+            tabContainer->select(0);
+            REQUIRE(tabContainerSelectedCount == 4);
         }
     }
 
     SECTION("Saving and loading from file")
     {
-        testSavingWidget("TabContainer", tabContainer, false);
+        testSavingWidget("TabContainer", tabContainer);
     }
 }

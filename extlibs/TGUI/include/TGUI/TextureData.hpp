@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -32,14 +32,16 @@
 #include <TGUI/Optional.hpp>
 #include <TGUI/SvgImage.hpp>
 
-#include <TGUI/BackendTexture.hpp>
+#include <TGUI/Backend/Renderer/BackendTexture.hpp>
 
-#include <memory>
-#include <string>
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <memory>
+    #include <string>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -48,7 +50,7 @@ namespace tgui
     {
         // Either svgImage or backendTexture MUST have a value
         Optional<SvgImage> svgImage;
-        std::shared_ptr<BackendTextureBase> backendTexture;
+        std::shared_ptr<BackendTexture> backendTexture;
     };
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

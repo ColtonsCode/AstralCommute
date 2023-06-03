@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -22,10 +22,14 @@
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "Tests.hpp"
-#include <TGUI/Loading/ImageLoader.hpp>
 #include <fstream>
 #include <cstring>
+
+#include "Tests.hpp"
+
+#if !TGUI_BUILD_AS_CXX_MODULE
+    #include <TGUI/Loading/ImageLoader.hpp>
+#endif
 
 // Rendering isn't identical on different computers, so we just check that the image looks similar enough.
 // The worst encountered difference was 1.43% on Label_Simple.png, so errors less than 1.5% of the entire
@@ -58,7 +62,8 @@ void compareImageFiles(const tgui::String& filename1, const tgui::String& filena
         }
     }
 
-    double diffPercentage = (totalDiff * 100)  / (imageSize1.x * imageSize1.y * 3);
+    const double diffPercentage = (totalDiff * 100)  / (imageSize1.x * imageSize1.y * 3);
+    INFO("Filename: " + filename1.toStdString());
     REQUIRE(diffPercentage < 1.75);
 }
 

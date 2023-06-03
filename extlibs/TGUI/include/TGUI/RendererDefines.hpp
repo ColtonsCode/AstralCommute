@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -74,7 +74,7 @@
     } \
     void CLASS::set##NAME(tgui::TextStyles style) \
     { \
-        setProperty(tgui::String(#NAME), ObjectConverter{style}); \
+        setProperty(tgui::String(#NAME), tgui::ObjectConverter{style}); \
     }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -93,7 +93,7 @@
     TGUI_RENDERER_PROPERTY_GET_NUMBER(CLASS, NAME, DEFAULT) \
     void CLASS::set##NAME(float number) \
     { \
-        setProperty(tgui::String(#NAME), ObjectConverter{number}); \
+        setProperty(tgui::String(#NAME), tgui::ObjectConverter{number}); \
     }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -112,7 +112,7 @@
     TGUI_RENDERER_PROPERTY_GET_BOOL(CLASS, NAME, DEFAULT) \
     void CLASS::set##NAME(bool flag) \
     { \
-        setProperty(tgui::String(#NAME), ObjectConverter{flag}); \
+        setProperty(tgui::String(#NAME), tgui::ObjectConverter{flag}); \
     }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -145,13 +145,16 @@
         else \
         { \
             const auto& renderer = tgui::Theme::getDefault()->getRendererNoThrow(RENDERER); \
-            m_data->propertyValuePairs[tgui::String(#NAME)] = {renderer ? renderer : DEFAULT}; \
+            m_data->propertyValuePairs[tgui::String(#NAME)] = {renderer ? renderer : (DEFAULT)}; \
             return renderer; \
         } \
     } \
     void CLASS::set##NAME(std::shared_ptr<tgui::RendererData> renderer) \
     { \
-        setProperty(tgui::String(#NAME), {renderer}); \
+        if (renderer) \
+            setProperty(tgui::String(#NAME), {std::move(renderer)}); \
+        else \
+            setProperty(tgui::String(#NAME), {RendererData::create()}); \
     }
 
 #define TGUI_RENDERER_PROPERTY_RENDERER(CLASS, NAME, RENDERER) \

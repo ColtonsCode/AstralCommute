@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,8 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Widgets/ListBox.hpp>
-#include <TGUI/Widgets/Group.hpp>
 
 TEST_CASE("[ListBox]")
 {
@@ -35,23 +33,23 @@ TEST_CASE("[ListBox]")
     {
         listBox->onItemSelect([](){});
         listBox->onItemSelect([](int){});
-        listBox->onItemSelect([](tgui::String){});
-        listBox->onItemSelect([](tgui::String, tgui::String){});
+        listBox->onItemSelect([](const tgui::String&){});
+        listBox->onItemSelect([](const tgui::String&, const tgui::String&){});
 
         listBox->onMousePress([](){});
         listBox->onMousePress([](int){});
-        listBox->onMousePress([](tgui::String){});
-        listBox->onMousePress([](tgui::String, tgui::String){});
+        listBox->onMousePress([](const tgui::String&){});
+        listBox->onMousePress([](const tgui::String&, const tgui::String&){});
 
         listBox->onMouseRelease([](){});
         listBox->onMouseRelease([](int){});
-        listBox->onMouseRelease([](tgui::String){});
-        listBox->onMouseRelease([](tgui::String, tgui::String){});
+        listBox->onMouseRelease([](const tgui::String&){});
+        listBox->onMouseRelease([](const tgui::String&, const tgui::String&){});
 
         listBox->onDoubleClick([](){});
         listBox->onDoubleClick([](int){});
-        listBox->onDoubleClick([](tgui::String){});
-        listBox->onDoubleClick([](tgui::String, tgui::String){});
+        listBox->onDoubleClick([](const tgui::String&){});
+        listBox->onDoubleClick([](const tgui::String&, const tgui::String&){});
 
         listBox->onScroll([](){});
         listBox->onScroll([](unsigned int){});
@@ -433,8 +431,8 @@ TEST_CASE("[ListBox]")
             listBox->addItem("Item 9");
 
             // Scrolling down with mouse wheel
-            container->mouseWheelScrolled(-1, {40, 70});
-            container->mouseWheelScrolled(-1, {40, 70});
+            container->scrolled(-1, {40, 70}, false);
+            container->scrolled(-1, {40, 70}, false);
 
             mousePressed({40, 52});
             REQUIRE(listBox->getSelectedItemIndex() == 4);

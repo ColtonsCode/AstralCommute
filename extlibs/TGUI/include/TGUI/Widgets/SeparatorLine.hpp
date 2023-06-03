@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -31,7 +31,7 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Widget that is drawn as a filled rectangle and can be used as a line to visually separate widgets from each other
@@ -48,8 +48,10 @@ namespace tgui
     {
     public:
 
-        typedef std::shared_ptr<SeparatorLine> Ptr; //!< Shared widget pointer
-        typedef std::shared_ptr<const SeparatorLine> ConstPtr; //!< Shared constant widget pointer
+        using Ptr = std::shared_ptr<SeparatorLine>; //!< Shared widget pointer
+        using ConstPtr = std::shared_ptr<const SeparatorLine>; //!< Shared constant widget pointer
+
+        static constexpr const char StaticWidgetType[] = "SeparatorLine"; //!< Type name of the widget
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -59,7 +61,7 @@ namespace tgui
         /// @param initRenderer Should the renderer be initialized? Should be true unless a derived class initializes it.
         /// @see create
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        SeparatorLine(const char* typeName = "SeparatorLine", bool initRenderer = true);
+        SeparatorLine(const char* typeName = StaticWidgetType, bool initRenderer = true);
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -67,7 +69,7 @@ namespace tgui
         ///
         /// @return The new separator
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        static SeparatorLine::Ptr create(Layout2d size = {"100%", 1});
+        TGUI_NODISCARD static SeparatorLine::Ptr create(const Layout2d& size = {"100%", 1});
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -77,23 +79,22 @@ namespace tgui
         ///
         /// @return The new separator
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        static SeparatorLine::Ptr copy(SeparatorLine::ConstPtr separator);
+        TGUI_NODISCARD static SeparatorLine::Ptr copy(const SeparatorLine::ConstPtr& separator);
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @brief Returns the renderer, which gives access to functions that determine how the widget is displayed
         /// @return Temporary pointer to the renderer that may be shared with other widgets using the same renderer
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        SeparatorLineRenderer* getSharedRenderer();
-        const SeparatorLineRenderer* getSharedRenderer() const;
+        TGUI_NODISCARD SeparatorLineRenderer* getSharedRenderer() override;
+        TGUI_NODISCARD const SeparatorLineRenderer* getSharedRenderer() const override;
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @brief Returns the renderer, which gives access to functions that determine how the widget is displayed
         /// @return Temporary pointer to the renderer
         /// @warning After calling this function, the widget has its own copy of the renderer and it will no longer be shared.
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        SeparatorLineRenderer* getRenderer();
-        const SeparatorLineRenderer* getRenderer() const;
+        TGUI_NODISCARD SeparatorLineRenderer* getRenderer() override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -102,7 +103,7 @@ namespace tgui
         /// @param target Render target to draw to
         /// @param states Current render states
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        void draw(BackendRenderTargetBase& target, RenderStates states) const override;
+        void draw(BackendRenderTarget& target, RenderStates states) const override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -119,10 +120,7 @@ namespace tgui
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // Makes a copy of the widget
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Widget::Ptr clone() const override
-        {
-            return std::make_shared<SeparatorLine>(*this);
-        }
+        TGUI_NODISCARD Widget::Ptr clone() const override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

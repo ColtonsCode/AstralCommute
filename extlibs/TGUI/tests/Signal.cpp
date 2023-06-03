@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,7 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Widgets/Button.hpp>
 
 TEST_CASE("[Signal]")
 {
@@ -33,22 +32,25 @@ TEST_CASE("[Signal]")
     {
         unsigned int id = widget->onPositionChange.connect([](){});
         REQUIRE(widget->onPositionChange.connect([](tgui::Vector2f){}) == ++id);
-        REQUIRE(widget->onPositionChange.connectEx([](tgui::Widget::Ptr, tgui::String){}) == ++id);
+        REQUIRE(widget->onPositionChange.connectEx([](const tgui::Widget::Ptr&, const tgui::String&){}) == ++id);
 
         REQUIRE(widget->onSizeChange([](){}) == ++id);
         REQUIRE(widget->onSizeChange([](tgui::Vector2f){}) == ++id);
 
         REQUIRE(widget->onFocus.connect([](){}) == ++id);
-        REQUIRE(widget->onFocus.connectEx([](tgui::Widget::Ptr, tgui::String){}) == ++id);
+        REQUIRE(widget->onFocus.connectEx([](const tgui::Widget::Ptr&, const tgui::String&){}) == ++id);
 
         REQUIRE(widget->onUnfocus.connect([](){}) == ++id);
-        REQUIRE(widget->onUnfocus.connectEx([](tgui::Widget::Ptr, tgui::String){}) == ++id);
+        REQUIRE(widget->onUnfocus.connectEx([](const tgui::Widget::Ptr&, const tgui::String&){}) == ++id);
 
         REQUIRE(widget->onMouseEnter.connect([](){}) == ++id);
-        REQUIRE(widget->onMouseEnter.connectEx([](tgui::Widget::Ptr, tgui::String){}) == ++id);
+        REQUIRE(widget->onMouseEnter.connectEx([](const tgui::Widget::Ptr&, const tgui::String&){}) == ++id);
 
         REQUIRE(widget->onMouseLeave.connect([](){}) == ++id);
-        REQUIRE(widget->onMouseLeave.connectEx([](tgui::Widget::Ptr, tgui::String){}) == ++id);
+        REQUIRE(widget->onMouseLeave.connectEx([](const tgui::Widget::Ptr&, const tgui::String&){}) == ++id);
+
+        REQUIRE(widget->onAnimationFinish([](){}) == ++id);
+        REQUIRE(widget->onAnimationFinish([](tgui::AnimationType){}) == ++id);
 
         REQUIRE(widget->onShowEffectFinish([](){}) == ++id);
         REQUIRE(widget->onShowEffectFinish([](tgui::ShowEffectType){}) == ++id);
@@ -61,24 +63,24 @@ TEST_CASE("[Signal]")
         REQUIRE(widget2->onPress([](){}) == ++id);
         REQUIRE(widget2->onPress([](int){}, 5) == ++id);
         REQUIRE(widget2->onPress([](auto){}, 10.f) == ++id);
-        REQUIRE(widget2->onPress.connectEx([](tgui::Widget::Ptr, tgui::String){}) == ++id);
-        REQUIRE(widget2->onPress.connectEx([](auto, auto, auto, tgui::Widget::Ptr, tgui::String){}, "Hey", 15, 3.f) == ++id);
+        REQUIRE(widget2->onPress.connectEx([](const tgui::Widget::Ptr&, const tgui::String&){}) == ++id);
+        REQUIRE(widget2->onPress.connectEx([](auto, auto, auto, const tgui::Widget::Ptr&, const tgui::String&){}, "Hey", 15, 3.f) == ++id);
 
         struct Class
         {
             void signalHandler1() {}
-            void signalHandler2(tgui::Widget::Ptr, const tgui::String&) {}
-            void signalHandler3(int, float, tgui::Widget::Ptr, const tgui::String&) {}
-            void signalHandler4(int&, tgui::Widget::Ptr, const tgui::String&) {}
+            void signalHandler2(const tgui::Widget::Ptr&, const tgui::String&) {}
+            void signalHandler3(int, float, const tgui::Widget::Ptr&, const tgui::String&) {}
+            void signalHandler4(int&, const tgui::Widget::Ptr&, const tgui::String&) {}
             void signalHandler5(int&, const tgui::String&) {}
-            void signalHandler6(int&, tgui::String) {}
+            void signalHandler6(int&, const tgui::String&) {}
 
             void signalHandler7() const {}
-            void signalHandler8(tgui::Widget::Ptr, const tgui::String&) const {}
-            void signalHandler9(int, float, tgui::Widget::Ptr, const tgui::String&) const {}
-            void signalHandler10(int&, tgui::Widget::Ptr, const tgui::String&) const {}
+            void signalHandler8(const tgui::Widget::Ptr&, const tgui::String&) const {}
+            void signalHandler9(int, float, const tgui::Widget::Ptr&, const tgui::String&) const {}
+            void signalHandler10(int&, const tgui::Widget::Ptr&, const tgui::String&) const {}
             void signalHandler11(int&, const tgui::String&) const {}
-            void signalHandler12(int&, tgui::String) const {}
+            void signalHandler12(int&, const tgui::String&) const {}
         };
 
         int i;
@@ -96,7 +98,7 @@ TEST_CASE("[Signal]")
         REQUIRE(widget2->onPress.connect(&Class::signalHandler11, &instance, std::ref(i)) == ++id);
         REQUIRE(widget2->onPress.connect(&Class::signalHandler12, &instance, std::ref(i)) == ++id);
 
-        REQUIRE(widget2->onPress(std::function<void(tgui::String)>([](tgui::String){})) == ++id);
+        REQUIRE(widget2->onPress(std::function<void(tgui::String)>([](tgui::String){})) == ++id); // NOLINT(performance-unnecessary-value-param)
     }
 
     SECTION("disconnect")

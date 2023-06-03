@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,8 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Widgets/TreeView.hpp>
-#include <TGUI/Widgets/Panel.hpp>
 
 TEST_CASE("[TreeView]")
 {
@@ -34,24 +32,24 @@ TEST_CASE("[TreeView]")
     SECTION("Signals")
     {
         treeView->onItemSelect([](){});
-        treeView->onItemSelect([](tgui::String){});
-        treeView->onItemSelect([](std::vector<tgui::String>){});
+        treeView->onItemSelect([](const tgui::String&){});
+        treeView->onItemSelect([](const std::vector<tgui::String>&){});
 
         treeView->onDoubleClick([](){});
-        treeView->onDoubleClick([](tgui::String){});
-        treeView->onDoubleClick([](std::vector<tgui::String>){});
+        treeView->onDoubleClick([](const tgui::String&){});
+        treeView->onDoubleClick([](const std::vector<tgui::String>&){});
 
         treeView->onExpand([](){});
-        treeView->onExpand([](tgui::String){});
-        treeView->onExpand([](std::vector<tgui::String>){});
+        treeView->onExpand([](const tgui::String&){});
+        treeView->onExpand([](const std::vector<tgui::String>&){});
 
         treeView->onCollapse([](){});
-        treeView->onCollapse([](tgui::String){});
-        treeView->onCollapse([](std::vector<tgui::String>){});
+        treeView->onCollapse([](const tgui::String&){});
+        treeView->onCollapse([](const std::vector<tgui::String>&){});
 
         treeView->onRightClick([](){});
-        treeView->onRightClick([](tgui::String){});
-        treeView->onRightClick([](std::vector<tgui::String>){});
+        treeView->onRightClick([](const tgui::String&){});
+        treeView->onRightClick([](const std::vector<tgui::String>&){});
     }
 
     SECTION("WidgetType")
@@ -326,12 +324,14 @@ TEST_CASE("[TreeView]")
 
         SECTION("textured")
         {
-            tgui::Texture textureBranchExpanded("resources/TreeView/Expanded.png");
-            tgui::Texture textureBranchCollapsed("resources/TreeView/Collapsed.png");
-            tgui::Texture textureLeaf("resources/TreeView/Leaf.png");
+            tgui::Texture textureBackground("resources/Black.png", {0, 154, 48, 48}, {16, 16, 16, 16});
+            tgui::Texture textureBranchExpanded("resources/TreeViewExpanded.png");
+            tgui::Texture textureBranchCollapsed("resources/TreeViewCollapsed.png");
+            tgui::Texture textureLeaf("resources/TreeViewLeaf.png");
 
             SECTION("set serialized property")
             {
+                REQUIRE_NOTHROW(renderer->setProperty("TextureBackground", tgui::Serializer::serialize(textureBackground)));
                 REQUIRE_NOTHROW(renderer->setProperty("TextureBranchExpanded", tgui::Serializer::serialize(textureBranchExpanded)));
                 REQUIRE_NOTHROW(renderer->setProperty("TextureBranchCollapsed", tgui::Serializer::serialize(textureBranchCollapsed)));
                 REQUIRE_NOTHROW(renderer->setProperty("TextureLeaf", tgui::Serializer::serialize(textureLeaf)));
@@ -339,6 +339,7 @@ TEST_CASE("[TreeView]")
 
             SECTION("set object property")
             {
+                REQUIRE_NOTHROW(renderer->setProperty("TextureBackground", textureBackground));
                 REQUIRE_NOTHROW(renderer->setProperty("TextureBranchExpanded", textureBranchExpanded));
                 REQUIRE_NOTHROW(renderer->setProperty("TextureBranchCollapsed", textureBranchCollapsed));
                 REQUIRE_NOTHROW(renderer->setProperty("TextureLeaf", textureLeaf));
@@ -346,15 +347,18 @@ TEST_CASE("[TreeView]")
 
             SECTION("functions")
             {
+                renderer->setTextureBackground(textureBackground);
                 renderer->setTextureBranchExpanded(textureBranchExpanded);
                 renderer->setTextureBranchCollapsed(textureBranchCollapsed);
                 renderer->setTextureLeaf(textureLeaf);
             }
 
+            REQUIRE(renderer->getProperty("TextureBackground").getTexture().getData() != nullptr);
             REQUIRE(renderer->getProperty("TextureBranchExpanded").getTexture().getData() != nullptr);
             REQUIRE(renderer->getProperty("TextureBranchCollapsed").getTexture().getData() != nullptr);
             REQUIRE(renderer->getProperty("TextureLeaf").getTexture().getData() != nullptr);
 
+            REQUIRE(renderer->getTextureBackground().getData() == textureBackground.getData());
             REQUIRE(renderer->getTextureBranchExpanded().getData() == textureBranchExpanded.getData());
             REQUIRE(renderer->getTextureBranchCollapsed().getData() == textureBranchCollapsed.getData());
             REQUIRE(renderer->getTextureLeaf().getData() == textureLeaf.getData());
@@ -374,7 +378,7 @@ TEST_CASE("[TreeView]")
         treeView->setItemHeight(30);
         treeView->setTextSize(25);
 
-        testSavingWidget("TreeView", treeView, false);
+        testSavingWidget("TreeView", treeView);
     }
 
     // TODO: Draw

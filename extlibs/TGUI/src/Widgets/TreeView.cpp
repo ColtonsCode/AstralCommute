@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,7 +25,11 @@
 
 #include <TGUI/Widgets/TreeView.hpp>
 #include <TGUI/Keyboard.hpp>
-#include <cmath>
+
+#include <cassert>
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cmath>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -190,14 +194,14 @@ namespace tgui
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        void saveItems(std::unique_ptr<DataIO::Node>& parentNode, const std::vector<std::shared_ptr<TreeView::Node>>& items)
+        void saveItems(const std::unique_ptr<DataIO::Node>& parentNode, const std::vector<std::shared_ptr<TreeView::Node>>& items)
         {
             for (const auto& item : items)
             {
                 auto itemNode = std::make_unique<DataIO::Node>();
                 itemNode->name = "Item";
 
-                itemNode->propertyValuePairs["Text"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(item->text.getString()));
+                itemNode->propertyValuePairs[U"Text"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(item->text.getString()));
 
                 if (!item->nodes.empty())
                 {
@@ -221,7 +225,7 @@ namespace tgui
                             itemList += ", " + Serializer::serialize(item->nodes[i]->text.getString());
                         itemList += "]";
 
-                        itemNode->propertyValuePairs["Items"] = std::make_unique<DataIO::ValueNode>(itemList);
+                        itemNode->propertyValuePairs[U"Items"] = std::make_unique<DataIO::ValueNode>(itemList);
                     }
                 }
 
@@ -232,13 +236,15 @@ namespace tgui
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     }
 
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char TreeView::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     TreeView::TreeView(const char* typeName, bool initRenderer) :
         Widget{typeName, false}
     {
-        m_draggableWidget = true;
-
         // Rotate the horizontal scrollbar
         m_horizontalScrollbar->setSize(m_horizontalScrollbar->getSize().y, m_horizontalScrollbar->getSize().x);
 
@@ -248,8 +254,8 @@ namespace tgui
             setRenderer(Theme::getDefault()->getRendererNoThrow(m_type));
 
             setTextSize(getGlobalTextSize());
-            setItemHeight(static_cast<unsigned int>(Text::getLineHeight(m_fontCached, m_textSize, m_textStyleCached) * 1.25f));
-            setSize({Text::getLineHeight(m_fontCached, m_textSize, m_textStyleCached) * 10,
+            setItemHeight(static_cast<unsigned int>(std::round(Text::getLineHeight(m_fontCached, m_textSizeCached) * 1.25f)));
+            setSize({Text::getLineHeight(m_fontCached, m_textSizeCached) * 10,
                      (m_itemHeight * 7) + m_paddingCached.getTop() + m_paddingCached.getBottom() + m_bordersCached.getTop() + m_bordersCached.getBottom()});
         }
     }
@@ -266,7 +272,6 @@ namespace tgui
         m_selectedItem                      {other.m_selectedItem},
         m_hoveredItem                       {other.m_hoveredItem},
         m_itemHeight                        {other.m_itemHeight},
-        m_requestedTextSize                 {other.m_requestedTextSize},
         m_maxRight                          {other.m_maxRight},
         m_iconBounds                        {other.m_iconBounds},
         m_verticalScrollbar                 {other.m_verticalScrollbar},
@@ -317,7 +322,6 @@ namespace tgui
             std::swap(m_selectedItem,                       temp.m_selectedItem);
             std::swap(m_hoveredItem,                        temp.m_hoveredItem);
             std::swap(m_itemHeight,                         temp.m_itemHeight);
-            std::swap(m_requestedTextSize,                  temp.m_requestedTextSize);
             std::swap(m_maxRight,                           temp.m_maxRight);
             std::swap(m_iconBounds,                         temp.m_iconBounds);
             std::swap(m_verticalScrollbar,                  temp.m_verticalScrollbar);
@@ -353,7 +357,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    TreeView::Ptr TreeView::copy(TreeView::ConstPtr treeView)
+    TreeView::Ptr TreeView::copy(const TreeView::ConstPtr& treeView)
     {
         if (treeView)
             return std::static_pointer_cast<TreeView>(treeView->clone());
@@ -384,13 +388,6 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    const TreeViewRenderer* TreeView::getRenderer() const
-    {
-        return aurora::downcast<const TreeViewRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     void TreeView::setSize(const Layout2d& size)
     {
         Widget::setSize(size);
@@ -398,6 +395,8 @@ namespace tgui
         updateIconBounds();
         m_bordersCached.updateParentSize(getSize());
         m_paddingCached.updateParentSize(getSize());
+
+        m_spriteBackground.setSize(getInnerSize());
 
         markNodesDirty();
     }
@@ -469,11 +468,11 @@ namespace tgui
         if (!node)
             return false;
 
-        for (unsigned int i = 0; i < m_visibleNodes.size(); ++i)
+        for (std::size_t i = 0; i < m_visibleNodes.size(); ++i)
         {
             if (m_visibleNodes[i].get() == node)
             {
-                updateSelectedItem(i);
+                updateSelectedItem(static_cast<int>(i));
                 return true;
             }
         }
@@ -511,10 +510,11 @@ namespace tgui
     {
         std::vector<String> hierarchy;
 
-        if (m_selectedItem == -1)
+        if (m_selectedItem < 0)
             return hierarchy;
 
-        const auto* node = m_visibleNodes[m_selectedItem].get();
+        const auto* node = m_visibleNodes[static_cast<std::size_t>(m_selectedItem)].get();
+        assert(node != nullptr);
         while (node)
         {
             hierarchy.insert(hierarchy.begin(), node->text.getString());
@@ -536,6 +536,7 @@ namespace tgui
 
         std::vector<String> hierarchy;
         auto* node = m_visibleNodes[index].get();
+        assert(node != nullptr);
         while (node)
         {
             hierarchy.insert(hierarchy.begin(), node->text.getString());
@@ -592,8 +593,8 @@ namespace tgui
     void TreeView::setItemHeight(unsigned int itemHeight)
     {
         m_itemHeight = itemHeight;
-        if (m_requestedTextSize == 0)
-            setTextSize(0);
+        if ((m_textSize == 0) && !getSharedRenderer()->getTextSize())
+            updateTextSize();
 
         m_verticalScrollbar->setScrollAmount(m_itemHeight);
         m_horizontalScrollbar->setScrollAmount(m_itemHeight);
@@ -610,16 +611,12 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void TreeView::setTextSize(unsigned int textSize)
+    void TreeView::updateTextSize()
     {
-        m_requestedTextSize = textSize;
+        if ((m_textSize == 0) && !getSharedRenderer()->getTextSize())
+            m_textSizeCached = Text::findBestTextSize(m_fontCached, m_itemHeight * 0.8f);
 
-        if (textSize)
-            m_textSize = textSize;
-        else
-            m_textSize = Text::findBestTextSize(m_fontCached, m_itemHeight * 0.8f);
-
-        setTextSizeImpl(m_nodes, textSize);
+        setTextSizeImpl(m_nodes, m_textSizeCached);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -654,21 +651,28 @@ namespace tgui
 
     bool TreeView::isMouseOnWidget(Vector2f pos) const
     {
-        return FloatRect{getPosition().x, getPosition().y, getSize().x, getSize().y}.contains(pos);
+        if (FloatRect{getPosition().x, getPosition().y, getSize().x, getSize().y}.contains(pos))
+        {
+            if (!m_transparentTextureCached || !m_spriteBackground.isSet() || !m_spriteBackground.isTransparentPixel(pos - getPosition() - m_bordersCached.getOffset()))
+                return true;
+        }
+
+        return false;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void TreeView::leftMousePressed(Vector2f pos)
+    bool TreeView::leftMousePressed(Vector2f pos)
     {
         Widget::leftMousePressed(pos);
 
         pos -= getPosition();
 
+        bool isDragging = false;
         if (m_verticalScrollbar->isMouseOnWidget(pos))
-            m_verticalScrollbar->leftMousePressed(pos);
+            isDragging = m_verticalScrollbar->leftMousePressed(pos);
         else if (m_horizontalScrollbar->isMouseOnWidget(pos))
-            m_horizontalScrollbar->leftMousePressed(pos);
+            isDragging = m_horizontalScrollbar->leftMousePressed(pos);
         else
         {
             float maxItemWidth = getInnerSize().x - m_paddingCached.getLeft() - m_paddingCached.getRight();
@@ -679,6 +683,8 @@ namespace tgui
                           maxItemWidth, getInnerSize().y - m_paddingCached.getTop() - m_paddingCached.getBottom()}.contains(pos))
             {
                 pos.y -= m_bordersCached.getTop() + m_paddingCached.getTop();
+
+                // NOLINTNEXTLINE(bugprone-integer-division)
                 int selectedItem = static_cast<int>(((pos.y - (m_itemHeight - (m_verticalScrollbar->getValue() % m_itemHeight))) / m_itemHeight) + (m_verticalScrollbar->getValue() / m_itemHeight) + 1);
                 if (selectedItem >= static_cast<int>(m_visibleNodes.size()))
                     selectedItem = -1;
@@ -686,6 +692,8 @@ namespace tgui
                 updateSelectedItem(selectedItem);
             }
         }
+
+        return isDragging;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -709,19 +717,20 @@ namespace tgui
             {
                 pos.y -= m_bordersCached.getTop() + m_paddingCached.getTop();
 
+                // NOLINTNEXTLINE(bugprone-integer-division)
                 selectedIndex = static_cast<int>(((pos.y - (m_itemHeight - (m_verticalScrollbar->getValue() % m_itemHeight))) / m_itemHeight) + (m_verticalScrollbar->getValue() / m_itemHeight) + 1);
                 if ((selectedIndex >= 0) && (selectedIndex == m_selectedItem))
                 {
                     // Expand or colapse the node when clicking the icon
                     const float iconPaddingX = (m_iconBounds.x / 4.f);
-                    const float iconOffsetX = iconPaddingX + ((m_iconBounds.x + iconPaddingX) * m_visibleNodes[selectedIndex]->depth);
+                    const float iconOffsetX = iconPaddingX + ((m_iconBounds.x + iconPaddingX) * m_visibleNodes[static_cast<std::size_t>(selectedIndex)]->depth);
                     const float iconOffsetY = (m_itemHeight - m_iconBounds.y) / 2.f;
                     if (FloatRect{iconOffsetX + m_bordersCached.getLeft() + m_paddingCached.getLeft() - m_horizontalScrollbar->getValue(),
-                                  iconOffsetY + (selectedIndex * m_itemHeight) + m_bordersCached.getTop() + m_paddingCached.getTop() - m_verticalScrollbar->getValue(),
+                                  iconOffsetY + (static_cast<unsigned int>(selectedIndex) * m_itemHeight) + m_bordersCached.getTop() + m_paddingCached.getTop() - m_verticalScrollbar->getValue(),
                                   m_iconBounds.x,
                                   m_iconBounds.y}.contains(pos))
                     {
-                        toggleNodeInternal(selectedIndex);
+                        toggleNodeInternal(static_cast<std::size_t>(selectedIndex));
                         m_possibleDoubleClick = false;
                         iconPressed = true;
                     }
@@ -734,13 +743,14 @@ namespace tgui
 
                 if ((selectedIndex >= 0) && (selectedIndex == m_doubleClickNodeIndex) && (selectedIndex < static_cast<int>(m_visibleNodes.size())))
                 {
-                    toggleNodeInternal(selectedIndex);
+                    toggleNodeInternal(static_cast<std::size_t>(selectedIndex));
 
                     // Send double click if this was a leaf node
-                    if (m_visibleNodes[selectedIndex]->nodes.empty())
+                    if (m_visibleNodes[static_cast<std::size_t>(selectedIndex)]->nodes.empty())
                     {
                         std::vector<String> hierarchy;
-                        auto* node = m_visibleNodes[selectedIndex].get();
+                        auto* node = m_visibleNodes[static_cast<std::size_t>(selectedIndex)].get();
+                        assert(node != nullptr);
                         while (node)
                         {
                             hierarchy.insert(hierarchy.begin(), node->text.getString());
@@ -777,13 +787,16 @@ namespace tgui
                       maxItemWidth, getInnerSize().y - m_paddingCached.getTop() - m_paddingCached.getBottom()}.contains(pos))
         {
             pos.y -= m_bordersCached.getTop() + m_paddingCached.getTop();
+
+            // NOLINTNEXTLINE(bugprone-integer-division)
             int selectedItem = static_cast<int>(((pos.y - (m_itemHeight - (m_verticalScrollbar->getValue() % m_itemHeight))) / m_itemHeight) + (m_verticalScrollbar->getValue() / m_itemHeight) + 1);
-            if (selectedItem < static_cast<int>(m_visibleNodes.size()))
+            if ((selectedItem >= 0) && (selectedItem < static_cast<int>(m_visibleNodes.size())))
             {
                 updateSelectedItem(selectedItem);
 
                 std::vector<String> hierarchy;
-                auto* node = m_visibleNodes[selectedItem].get();
+                auto* node = m_visibleNodes[static_cast<std::size_t>(selectedItem)].get();
+                assert(node != nullptr);
                 while (node)
                 {
                     hierarchy.insert(hierarchy.begin(), node->text.getString());
@@ -822,6 +835,7 @@ namespace tgui
             {
                 pos.y -= m_bordersCached.getTop() + m_paddingCached.getTop();
 
+                // NOLINTNEXTLINE(bugprone-integer-division)
                 int hoveredItem = static_cast<int>(((pos.y - (m_itemHeight - (m_verticalScrollbar->getValue() % m_itemHeight))) / m_itemHeight) + (m_verticalScrollbar->getValue() / m_itemHeight) + 1);
                 if (hoveredItem >= static_cast<int>(m_visibleNodes.size()))
                     hoveredItem = -1;
@@ -835,25 +849,24 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    bool TreeView::mouseWheelScrolled(float delta, Vector2f pos)
+    bool TreeView::scrolled(float delta, Vector2f pos, bool touch)
     {
+        bool scrollbarMoved = false;
         if (m_horizontalScrollbar->isShown()
-            && (!m_verticalScrollbar->isShown()
-                || m_horizontalScrollbar->isMouseOnWidget(pos - getPosition())
-                || keyboard::isShiftPressed()))
+         && !touch
+         && (!m_verticalScrollbar->isShown() || m_horizontalScrollbar->isMouseOnWidget(pos - getPosition()) || keyboard::isShiftPressed()))
         {
-            m_horizontalScrollbar->mouseWheelScrolled(delta, pos - getPosition());
-            mouseMoved(pos);
-            return true;
+            scrollbarMoved = m_horizontalScrollbar->scrolled(delta, pos - getPosition(), touch);
         }
         else if (m_verticalScrollbar->isShown())
         {
-            m_verticalScrollbar->mouseWheelScrolled(delta, pos - getPosition());
-            mouseMoved(pos);
-            return true;
+            scrollbarMoved = m_verticalScrollbar->scrolled(delta, pos - getPosition(), touch);
         }
-        else
-            return false;
+
+        if (scrollbarMoved)
+            mouseMoved(pos);
+
+        return scrollbarMoved;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -886,6 +899,7 @@ namespace tgui
         if (m_selectedItem < 0)
             return;
 
+        const auto selectedItemIdx = static_cast<std::size_t>(m_selectedItem);
         if (event.code == Event::KeyboardKey::Up)
         {
             // Select the item above
@@ -895,35 +909,35 @@ namespace tgui
         else if (event.code == Event::KeyboardKey::Down)
         {
             // Select the item below
-            if (static_cast<unsigned int>(m_selectedItem) + 1 < m_visibleNodes.size())
+            if (selectedItemIdx + 1 < m_visibleNodes.size())
                 updateSelectedItem(m_selectedItem + 1);
         }
         else if (event.code == Event::KeyboardKey::Left)
         {
             // If item is an expanded node then collapse it. Otherwise select the parent node, or the previous sibling node if it has no parent.
-            TGUI_ASSERT(static_cast<unsigned int>(m_selectedItem) <= m_visibleNodes.size(), "Selected item index has to be in range");
-            if (!m_visibleNodes[m_selectedItem]->nodes.empty() && m_visibleNodes[m_selectedItem]->expanded)
+            TGUI_ASSERT(selectedItemIdx <= m_visibleNodes.size(), "Selected item index has to be in range");
+            if (!m_visibleNodes[selectedItemIdx]->nodes.empty() && m_visibleNodes[selectedItemIdx]->expanded)
             {
-                m_visibleNodes[m_selectedItem]->expanded = false;
+                m_visibleNodes[selectedItemIdx]->expanded = false;
                 markNodesDirty();
             }
-            else if (m_visibleNodes[m_selectedItem]->parent)
+            else if (m_visibleNodes[selectedItemIdx]->parent)
             {
-                for (unsigned int i = 0; i < m_visibleNodes.size(); ++i)
+                for (std::size_t i = 0; i < m_visibleNodes.size(); ++i)
                 {
-                    if (m_visibleNodes[i].get() == m_visibleNodes[m_selectedItem]->parent)
+                    if (m_visibleNodes[i].get() == m_visibleNodes[selectedItemIdx]->parent)
                     {
-                        updateSelectedItem(i);
+                        updateSelectedItem(static_cast<int>(i));
                         break;
                     }
                 }
             }
             else if (m_selectedItem > 0)
             {
-                unsigned int nodeIndex = 0;
-                for (unsigned int i = 0; i < m_nodes.size(); ++i)
+                std::size_t nodeIndex = 0;
+                for (std::size_t i = 0; i < m_nodes.size(); ++i)
                 {
-                    if (m_nodes[i] == m_visibleNodes[m_selectedItem])
+                    if (m_nodes[i] == m_visibleNodes[selectedItemIdx])
                     {
                         nodeIndex = i;
                         break;
@@ -931,11 +945,11 @@ namespace tgui
                 }
 
                 TGUI_ASSERT(nodeIndex > 0, "Index can't be 0 as this is not the top item");
-                for (unsigned int i = 0; i < m_visibleNodes.size(); ++i)
+                for (std::size_t i = 0; i < m_visibleNodes.size(); ++i)
                 {
                     if (m_visibleNodes[i] == m_nodes[nodeIndex - 1])
                     {
-                        updateSelectedItem(i);
+                        updateSelectedItem(static_cast<int>(i));
                         break;
                     }
                 }
@@ -944,13 +958,13 @@ namespace tgui
         else if (event.code == Event::KeyboardKey::Right)
         {
             // If item is a collapsed node then expand it. Otherwise simply select the next item.
-            TGUI_ASSERT(static_cast<unsigned int>(m_selectedItem) <= m_visibleNodes.size(), "Selected item index has to be in range");
-            if (!m_visibleNodes[m_selectedItem]->nodes.empty() && !m_visibleNodes[m_selectedItem]->expanded)
+            TGUI_ASSERT(selectedItemIdx <= m_visibleNodes.size(), "Selected item index has to be in range");
+            if (!m_visibleNodes[selectedItemIdx]->nodes.empty() && !m_visibleNodes[selectedItemIdx]->expanded)
             {
-                m_visibleNodes[m_selectedItem]->expanded = true;
+                m_visibleNodes[selectedItemIdx]->expanded = true;
                 markNodesDirty();
             }
-            else if (static_cast<unsigned int>(m_selectedItem) + 1 < m_visibleNodes.size())
+            else if (selectedItemIdx + 1 < m_visibleNodes.size())
                 updateSelectedItem(m_selectedItem + 1);
         }
     }
@@ -977,85 +991,89 @@ namespace tgui
 
     void TreeView::rendererChanged(const String& property)
     {
-        if (property == "Borders")
+        if (property == U"Borders")
         {
             m_bordersCached = getSharedRenderer()->getBorders();
             setSize(m_size);
         }
-        else if (property == "Padding")
+        else if (property == U"Padding")
         {
             m_paddingCached = getSharedRenderer()->getPadding();
             setSize(m_size);
         }
-        else if (property == "BackgroundColor")
+        else if (property == U"BackgroundColor")
         {
             m_backgroundColorCached = getSharedRenderer()->getBackgroundColor();
         }
-        else if (property == "SelectedBackgroundColor")
+        else if (property == U"SelectedBackgroundColor")
         {
             m_selectedBackgroundColorCached = getSharedRenderer()->getSelectedBackgroundColor();
         }
-        else if (property == "BackgroundColorHover")
+        else if (property == U"BackgroundColorHover")
         {
             m_backgroundColorHoverCached = getSharedRenderer()->getBackgroundColorHover();
         }
-        else if (property == "SelectedBackgroundColorHover")
+        else if (property == U"SelectedBackgroundColorHover")
         {
             m_selectedBackgroundColorHoverCached = getSharedRenderer()->getSelectedBackgroundColorHover();
         }
-        else if (property == "BorderColor")
+        else if (property == U"BorderColor")
         {
             m_borderColorCached = getSharedRenderer()->getBorderColor();
         }
-        else if (property == "TextureBranchExpanded")
+        else if (property == U"TextureBackground")
+        {
+            m_spriteBackground.setTexture(getSharedRenderer()->getTextureBackground());
+        }
+        else if (property == U"TextureBranchExpanded")
         {
             m_spriteBranchExpanded.setTexture(getSharedRenderer()->getTextureBranchExpanded());
             updateIconBounds();
             markNodesDirty();
         }
-        else if (property == "TextureBranchCollapsed")
+        else if (property == U"TextureBranchCollapsed")
         {
             m_spriteBranchCollapsed.setTexture(getSharedRenderer()->getTextureBranchCollapsed());
             updateIconBounds();
             markNodesDirty();
         }
-        else if (property == "TextureLeaf")
+        else if (property == U"TextureLeaf")
         {
             m_spriteLeaf.setTexture(getSharedRenderer()->getTextureLeaf());
             updateIconBounds();
             markNodesDirty();
         }
-        else if (property == "TextColor")
+        else if (property == U"TextColor")
         {
             m_textColorCached = getSharedRenderer()->getTextColor();
             updateTextColors(m_nodes);
             updateSelectedAndHoveringItemColors();
         }
-        else if (property == "TextColorHover")
+        else if (property == U"TextColorHover")
         {
             m_textColorHoverCached = getSharedRenderer()->getTextColorHover();
             updateTextColors(m_nodes);
             updateSelectedAndHoveringItemColors();
         }
-        else if (property == "SelectedTextColor")
+        else if (property == U"SelectedTextColor")
         {
             m_selectedTextColorCached = getSharedRenderer()->getSelectedTextColor();
             updateTextColors(m_nodes);
             updateSelectedAndHoveringItemColors();
         }
-        else if (property == "SelectedTextColorHover")
+        else if (property == U"SelectedTextColorHover")
         {
             m_selectedTextColorHoverCached = getSharedRenderer()->getSelectedTextColorHover();
             updateTextColors(m_nodes);
             updateSelectedAndHoveringItemColors();
         }
-        else if (property == "Scrollbar")
+        else if (property == U"Scrollbar")
         {
             m_verticalScrollbar->setRenderer(getSharedRenderer()->getScrollbar());
             m_horizontalScrollbar->setRenderer(getSharedRenderer()->getScrollbar());
 
             // If no scrollbar width was set then we may need to use the one from the texture
-            if (!getSharedRenderer()->getScrollbarWidth())
+            if (getSharedRenderer()->getScrollbarWidth() == 0)
             {
                 const float width = m_verticalScrollbar->getDefaultWidth();
                 m_verticalScrollbar->setSize({width, m_verticalScrollbar->getSize().y});
@@ -1063,19 +1081,20 @@ namespace tgui
                 markNodesDirty();
             }
         }
-        else if (property == "ScrollbarWidth")
+        else if (property == U"ScrollbarWidth")
         {
-            const float width = getSharedRenderer()->getScrollbarWidth() ? getSharedRenderer()->getScrollbarWidth() : m_verticalScrollbar->getDefaultWidth();
+            const float width = (getSharedRenderer()->getScrollbarWidth() != 0) ? getSharedRenderer()->getScrollbarWidth() : m_verticalScrollbar->getDefaultWidth();
             m_verticalScrollbar->setSize({width, m_verticalScrollbar->getSize().y});
             m_horizontalScrollbar->setSize({m_horizontalScrollbar->getSize().x, width});
             markNodesDirty();
         }
-        else if ((property == "Opacity") || (property == "OpacityDisabled"))
+        else if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
             Widget::rendererChanged(property);
 
             setTextOpacityImpl(m_nodes, m_opacityCached);
 
+            m_spriteBackground.setOpacity(m_opacityCached);
             m_spriteBranchExpanded.setOpacity(m_opacityCached);
             m_spriteBranchCollapsed.setOpacity(m_opacityCached);
             m_spriteLeaf.setOpacity(m_opacityCached);
@@ -1083,7 +1102,7 @@ namespace tgui
             m_verticalScrollbar->setInheritedOpacity(m_opacityCached);
             m_horizontalScrollbar->setInheritedOpacity(m_opacityCached);
         }
-        else if (property == "Font")
+        else if (property == U"Font")
         {
             Widget::rendererChanged(property);
             setTextFontImpl(m_nodes, m_fontCached);
@@ -1097,8 +1116,7 @@ namespace tgui
     std::unique_ptr<DataIO::Node> TreeView::save(SavingRenderersMap& renderers) const
     {
         auto node = Widget::save(renderers);
-        node->propertyValuePairs["ItemHeight"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_itemHeight));
-        node->propertyValuePairs["TextSize"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_textSize));
+        node->propertyValuePairs[U"ItemHeight"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_itemHeight));
         saveItems(node, m_nodes);
         return node;
     }
@@ -1109,16 +1127,17 @@ namespace tgui
     {
         Widget::load(node, renderers);
 
-        if (node->propertyValuePairs["ItemHeight"])
-            setItemHeight(node->propertyValuePairs["ItemHeight"]->value.toInt());
-        if (node->propertyValuePairs["TextSize"])
-            setTextSize(node->propertyValuePairs["TextSize"]->value.toInt());
+        if (node->propertyValuePairs[U"ItemHeight"])
+            setItemHeight(node->propertyValuePairs[U"ItemHeight"]->value.toUInt());
 
         loadItems(node, m_nodes, nullptr);
 
         // Remove the 'Item' nodes as they have been processed
         node->children.erase(std::remove_if(node->children.begin(), node->children.end(),
-            [](const std::unique_ptr<DataIO::Node>& child){ return child->name == "Item"; }), node->children.end());
+            [](const std::unique_ptr<DataIO::Node>& child){ return child->name == U"Item"; }), node->children.end());
+
+        // Update the visible nodes
+        markNodesDirty();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1142,13 +1161,13 @@ namespace tgui
     {
         for (const auto& childNode : node->children)
         {
-            if (childNode->name != "Item")
+            if (childNode->name != U"Item")
                 continue;
 
-            if (!childNode->propertyValuePairs["Text"])
-                throw Exception{"Failed to parse 'Item' property, expected a nested 'Text' propery"};
+            if (!childNode->propertyValuePairs[U"Text"])
+                throw Exception{U"Failed to parse 'Item' property, expected a nested 'Text' propery"};
 
-            const String itemText = Deserializer::deserialize(ObjectConverter::Type::String, childNode->propertyValuePairs["Text"]->value).getString();
+            const String itemText = Deserializer::deserialize(ObjectConverter::Type::String, childNode->propertyValuePairs[U"Text"]->value).getString();
             createNode(items, parent, itemText);
 
             // Recursively handle the menu nodes
@@ -1156,14 +1175,14 @@ namespace tgui
                 loadItems(childNode, items.back()->nodes, items.back().get());
 
             // Menu items can also be stored in an string array in the 'Items' property instead of as a nested Menu section
-            if (childNode->propertyValuePairs["Items"])
+            if (childNode->propertyValuePairs[U"Items"])
             {
-                if (!childNode->propertyValuePairs["Items"]->listNode)
-                    throw Exception{"Failed to parse 'Items' property inside 'Item' property, expected a list as value"};
+                if (!childNode->propertyValuePairs[U"Items"]->listNode)
+                    throw Exception{U"Failed to parse 'Items' property inside 'Item' property, expected a list as value"};
 
-                for (std::size_t i = 0; i < childNode->propertyValuePairs["Items"]->valueList.size(); ++i)
+                for (std::size_t i = 0; i < childNode->propertyValuePairs[U"Items"]->valueList.size(); ++i)
                 {
-                    const String subItemText = Deserializer::deserialize(ObjectConverter::Type::String, childNode->propertyValuePairs["Items"]->valueList[i]).getString();
+                    const String subItemText = Deserializer::deserialize(ObjectConverter::Type::String, childNode->propertyValuePairs[U"Items"]->valueList[i]).getString();
                     createNode(items.back()->nodes, items.back().get(), subItemText);
                 }
             }
@@ -1178,7 +1197,7 @@ namespace tgui
         {
             m_visibleNodes.push_back(node);
             if (selectedNode == node.get())
-                m_selectedItem = pos;
+                m_selectedItem = static_cast<int>(pos);
 
             const float iconPadding = (m_iconBounds.x / 4.f);
             const float iconOffset = iconPadding + ((m_iconBounds.x + iconPadding) * node->depth);
@@ -1203,7 +1222,7 @@ namespace tgui
     {
         Node* selectedNode = nullptr;
         if (m_selectedItem >= 0 && static_cast<std::size_t>(m_selectedItem) < m_visibleNodes.size())
-            selectedNode = m_visibleNodes[m_selectedItem].get();
+            selectedNode = m_visibleNodes[static_cast<std::size_t>(m_selectedItem)].get();
 
         int oldHoveredItem = m_hoveredItem;
 
@@ -1211,7 +1230,7 @@ namespace tgui
         m_hoveredItem = -1;
         m_selectedItem = -1;
         m_visibleNodes.clear();
-        updateVisibleNodes(m_nodes, selectedNode, Text::getExtraHorizontalPadding(m_fontCached, m_textSize), 0);
+        updateVisibleNodes(m_nodes, selectedNode, Text::getExtraHorizontalPadding(m_fontCached, m_textSizeCached), 0);
 
         if (oldHoveredItem >= 0)
         {
@@ -1257,7 +1276,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void TreeView::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void TreeView::draw(BackendRenderTarget& target, RenderStates states) const
     {
         RenderStates statesForScrollbars = states;
 
@@ -1267,133 +1286,135 @@ namespace tgui
             states.transform.translate(m_bordersCached.getOffset());
         }
 
-        target.drawFilledRect(states, getInnerSize(), Color::applyOpacity(m_backgroundColorCached, m_opacityCached));
+        // Draw the background
+        if (m_spriteBackground.isSet())
+            target.drawSprite(states, m_spriteBackground);
+        else
+            target.drawFilledRect(states, getInnerSize(), Color::applyOpacity(m_backgroundColorCached, m_opacityCached));
 
+        float maxItemWidth = getInnerSize().x - m_paddingCached.getLeft() - m_paddingCached.getRight();
+        if (m_verticalScrollbar->isShown())
+            maxItemWidth -= m_verticalScrollbar->getSize().x;
+
+        target.addClippingLayer(states, {{m_paddingCached.getLeft(), m_paddingCached.getTop()},
+            {maxItemWidth, getInnerSize().y - m_paddingCached.getTop() - m_paddingCached.getBottom()}});
+
+        std::size_t firstNode = 0;
+        std::size_t lastNode = m_visibleNodes.size();
+        if (m_verticalScrollbar->getViewportSize() < m_verticalScrollbar->getMaximum())
         {
-            float maxItemWidth = getInnerSize().x - m_paddingCached.getLeft() - m_paddingCached.getRight();
-            if (m_verticalScrollbar->isShown())
-                maxItemWidth -= m_verticalScrollbar->getSize().x;
+            firstNode = m_verticalScrollbar->getValue() / m_itemHeight;
+            lastNode = (m_verticalScrollbar->getValue() + m_verticalScrollbar->getViewportSize()) / m_itemHeight;
 
-            target.addClippingLayer(states, {{m_paddingCached.getLeft(), m_paddingCached.getTop()},
-                {maxItemWidth, getInnerSize().y - m_paddingCached.getTop() - m_paddingCached.getBottom()}});
-
-            int firstNode = 0;
-            int lastNode = static_cast<int>(m_visibleNodes.size());
-            if (m_verticalScrollbar->getViewportSize() < m_verticalScrollbar->getMaximum())
-            {
-                firstNode = static_cast<int>(m_verticalScrollbar->getValue() / m_itemHeight);
-                lastNode = static_cast<int>((m_verticalScrollbar->getValue() + m_verticalScrollbar->getViewportSize()) / m_itemHeight);
-
-                // Show another item when the scrollbar is standing between two items
-                if ((m_verticalScrollbar->getValue() + m_verticalScrollbar->getViewportSize()) % m_itemHeight != 0)
-                    ++lastNode;
-            }
-
-            states.transform.translate({m_paddingCached.getLeft() - m_horizontalScrollbar->getValue(), m_paddingCached.getTop() - m_verticalScrollbar->getValue()});
-
-            // Draw the background of the selected item
-            if ((m_selectedItem >= firstNode) && (m_selectedItem < lastNode))
-            {
-                states.transform.translate({static_cast<float>(m_horizontalScrollbar->getValue()), m_selectedItem * static_cast<float>(m_itemHeight)});
-
-                const Vector2f size = {getInnerSize().x - m_paddingCached.getLeft() - m_paddingCached.getRight(), static_cast<float>(m_itemHeight)};
-                if ((m_selectedItem == m_hoveredItem) && m_selectedBackgroundColorHoverCached.isSet())
-                    target.drawFilledRect(states, size, Color::applyOpacity(m_selectedBackgroundColorHoverCached, m_opacityCached));
-                else
-                    target.drawFilledRect(states, size, Color::applyOpacity(m_selectedBackgroundColorCached, m_opacityCached));
-
-                states.transform.translate({-static_cast<float>(m_horizontalScrollbar->getValue()), -m_selectedItem * static_cast<float>(m_itemHeight)});
-            }
-
-            // Draw the background of the item on which the mouse is standing
-            if ((m_hoveredItem >= firstNode) && (m_hoveredItem < lastNode) && (m_hoveredItem != m_selectedItem) && m_backgroundColorHoverCached.isSet())
-            {
-                states.transform.translate({static_cast<float>(m_horizontalScrollbar->getValue()), m_hoveredItem * static_cast<float>(m_itemHeight)});
-                target.drawFilledRect(states, {getInnerSize().x - m_paddingCached.getLeft() - m_paddingCached.getRight(), static_cast<float>(m_itemHeight)}, Color::applyOpacity(m_backgroundColorHoverCached, m_opacityCached));
-                states.transform.translate({-static_cast<float>(m_horizontalScrollbar->getValue()), -m_hoveredItem * static_cast<float>(m_itemHeight)});
-            }
-
-            // Draw the icons
-            for (int i = firstNode; i < lastNode; ++i)
-            {
-                auto statesForIcon = states;
-                const float iconPadding = (m_iconBounds.x / 4.f);
-                const float iconOffset = iconPadding + ((m_iconBounds.x + iconPadding) * m_visibleNodes[i]->depth);
-                statesForIcon.transform.translate({std::round(iconOffset), std::round((i * m_itemHeight) + ((m_itemHeight - m_iconBounds.y) / 2.f))});
-
-                // Draw an icon for the leaf node if a texture is set
-                if (m_visibleNodes[i]->nodes.empty())
-                {
-                    if (m_spriteLeaf.isSet())
-                        target.drawSprite(statesForIcon, m_spriteLeaf);
-                }
-                else // Branch node
-                {
-                    if (m_spriteLeaf.isSet() || m_spriteBranchExpanded.isSet() || m_spriteBranchCollapsed.isSet())
-                    {
-                        const Sprite* iconSprite = nullptr;
-                        if (m_visibleNodes[i]->expanded)
-                        {
-                            if (m_spriteBranchExpanded.isSet())
-                                iconSprite = &m_spriteBranchExpanded;
-                            else if (m_spriteBranchCollapsed.isSet())
-                                iconSprite = &m_spriteBranchCollapsed;
-                            else
-                                iconSprite = &m_spriteLeaf;
-                        }
-                        else // Collapsed node
-                        {
-                            if (m_spriteBranchCollapsed.isSet())
-                                iconSprite = &m_spriteBranchCollapsed;
-                            else if (m_spriteBranchExpanded.isSet())
-                                iconSprite = &m_spriteBranchExpanded;
-                            else
-                                iconSprite = &m_spriteLeaf;
-                        }
-
-                        target.drawSprite(statesForIcon, *iconSprite);
-                    }
-                    else // No textures are used
-                    {
-                        Color iconColor = m_textColorCached;
-                        if (i == m_selectedItem)
-                        {
-                            if ((m_selectedItem == m_hoveredItem) && m_selectedTextColorHoverCached.isSet())
-                                iconColor = m_selectedTextColorHoverCached;
-                            else if (m_selectedTextColorCached.isSet())
-                                iconColor = m_selectedTextColorCached;
-                        }
-                        if ((i == m_hoveredItem) && (m_selectedItem != m_hoveredItem))
-                        {
-                            if (m_textColorHoverCached.isSet())
-                                iconColor = m_textColorHoverCached;
-                        }
-
-                        const float thickness = std::max(1.f, std::round(m_itemHeight / 10.f));
-                        if (m_visibleNodes[i]->expanded)
-                        {
-                            // Draw "-"
-                            statesForIcon.transform.translate({0, (m_iconBounds.y - thickness) / 2.f});
-                            target.drawFilledRect(statesForIcon, {m_iconBounds.x, thickness}, Color::applyOpacity(iconColor, m_opacityCached));
-                        }
-                        else // Collapsed node
-                        {
-                            // Draw "+"
-                            statesForIcon.transform.translate({0, (m_iconBounds.y - thickness) / 2.f});
-                            target.drawFilledRect(statesForIcon, {m_iconBounds.x, thickness}, Color::applyOpacity(iconColor, m_opacityCached));
-                            statesForIcon.transform.translate({(m_iconBounds.x - thickness) / 2.f, -(m_iconBounds.y - thickness) / 2.f});
-                            target.drawFilledRect(statesForIcon, {thickness, m_iconBounds.y}, Color::applyOpacity(iconColor, m_opacityCached));
-                        }
-                    }
-                }
-            }
-
-            // Draw the texts
-            for (int i = firstNode; i < lastNode; ++i)
-                target.drawText(states, m_visibleNodes[i]->text);
-
-            target.removeClippingLayer();
+            // Show another item when the scrollbar is standing between two items
+            if ((m_verticalScrollbar->getValue() + m_verticalScrollbar->getViewportSize()) % m_itemHeight != 0)
+                ++lastNode;
         }
+
+        states.transform.translate({m_paddingCached.getLeft() - m_horizontalScrollbar->getValue(), m_paddingCached.getTop() - m_verticalScrollbar->getValue()});
+
+        // Draw the background of the selected item
+        if ((m_selectedItem >= static_cast<int>(firstNode)) && (m_selectedItem < static_cast<int>(lastNode)))
+        {
+            states.transform.translate({static_cast<float>(m_horizontalScrollbar->getValue()), m_selectedItem * static_cast<float>(m_itemHeight)});
+
+            const Vector2f size = {getInnerSize().x - m_paddingCached.getLeft() - m_paddingCached.getRight(), static_cast<float>(m_itemHeight)};
+            if ((m_selectedItem == m_hoveredItem) && m_selectedBackgroundColorHoverCached.isSet())
+                target.drawFilledRect(states, size, Color::applyOpacity(m_selectedBackgroundColorHoverCached, m_opacityCached));
+            else
+                target.drawFilledRect(states, size, Color::applyOpacity(m_selectedBackgroundColorCached, m_opacityCached));
+
+            states.transform.translate({-static_cast<float>(m_horizontalScrollbar->getValue()), -m_selectedItem * static_cast<float>(m_itemHeight)});
+        }
+
+        // Draw the background of the item on which the mouse is standing
+        if ((m_hoveredItem >= static_cast<int>(firstNode)) && (m_hoveredItem < static_cast<int>(lastNode)) && (m_hoveredItem != m_selectedItem) && m_backgroundColorHoverCached.isSet())
+        {
+            states.transform.translate({static_cast<float>(m_horizontalScrollbar->getValue()), m_hoveredItem * static_cast<float>(m_itemHeight)});
+            target.drawFilledRect(states, {getInnerSize().x - m_paddingCached.getLeft() - m_paddingCached.getRight(), static_cast<float>(m_itemHeight)}, Color::applyOpacity(m_backgroundColorHoverCached, m_opacityCached));
+            states.transform.translate({-static_cast<float>(m_horizontalScrollbar->getValue()), -m_hoveredItem * static_cast<float>(m_itemHeight)});
+        }
+
+        // Draw the icons
+        for (std::size_t i = firstNode; i < lastNode; ++i)
+        {
+            auto statesForIcon = states;
+            const float iconPadding = (m_iconBounds.x / 4.f);
+            const float iconOffset = iconPadding + ((m_iconBounds.x + iconPadding) * m_visibleNodes[i]->depth);
+            statesForIcon.transform.translate({std::round(iconOffset), std::round((i * m_itemHeight) + ((m_itemHeight - m_iconBounds.y) / 2.f))});
+
+            // Draw an icon for the leaf node if a texture is set
+            if (m_visibleNodes[i]->nodes.empty())
+            {
+                if (m_spriteLeaf.isSet())
+                    target.drawSprite(statesForIcon, m_spriteLeaf);
+            }
+            else // Branch node
+            {
+                if (m_spriteLeaf.isSet() || m_spriteBranchExpanded.isSet() || m_spriteBranchCollapsed.isSet())
+                {
+                    const Sprite* iconSprite = nullptr;
+                    if (m_visibleNodes[i]->expanded)
+                    {
+                        if (m_spriteBranchExpanded.isSet())
+                            iconSprite = &m_spriteBranchExpanded;
+                        else if (m_spriteBranchCollapsed.isSet())
+                            iconSprite = &m_spriteBranchCollapsed;
+                        else
+                            iconSprite = &m_spriteLeaf;
+                    }
+                    else // Collapsed node
+                    {
+                        if (m_spriteBranchCollapsed.isSet())
+                            iconSprite = &m_spriteBranchCollapsed;
+                        else if (m_spriteBranchExpanded.isSet())
+                            iconSprite = &m_spriteBranchExpanded;
+                        else
+                            iconSprite = &m_spriteLeaf;
+                    }
+
+                    target.drawSprite(statesForIcon, *iconSprite);
+                }
+                else // No textures are used
+                {
+                    Color iconColor = m_textColorCached;
+                    if (static_cast<int>(i) == m_selectedItem)
+                    {
+                        if ((m_selectedItem == m_hoveredItem) && m_selectedTextColorHoverCached.isSet())
+                            iconColor = m_selectedTextColorHoverCached;
+                        else if (m_selectedTextColorCached.isSet())
+                            iconColor = m_selectedTextColorCached;
+                    }
+                    if ((static_cast<int>(i) == m_hoveredItem) && (m_selectedItem != m_hoveredItem))
+                    {
+                        if (m_textColorHoverCached.isSet())
+                            iconColor = m_textColorHoverCached;
+                    }
+
+                    const float thickness = std::max(1.f, std::round(m_itemHeight / 10.f));
+                    if (m_visibleNodes[i]->expanded)
+                    {
+                        // Draw "-"
+                        statesForIcon.transform.translate({0, (m_iconBounds.y - thickness) / 2.f});
+                        target.drawFilledRect(statesForIcon, {m_iconBounds.x, thickness}, Color::applyOpacity(iconColor, m_opacityCached));
+                    }
+                    else // Collapsed node
+                    {
+                        // Draw "+"
+                        statesForIcon.transform.translate({0, (m_iconBounds.y - thickness) / 2.f});
+                        target.drawFilledRect(statesForIcon, {m_iconBounds.x, thickness}, Color::applyOpacity(iconColor, m_opacityCached));
+                        statesForIcon.transform.translate({(m_iconBounds.x - thickness) / 2.f, -(m_iconBounds.y - thickness) / 2.f});
+                        target.drawFilledRect(statesForIcon, {thickness, m_iconBounds.y}, Color::applyOpacity(iconColor, m_opacityCached));
+                    }
+                }
+            }
+        }
+
+        // Draw the texts
+        for (std::size_t i = firstNode; i < lastNode; ++i)
+            target.drawText(states, m_visibleNodes[i]->text);
+
+        target.removeClippingLayer();
 
         m_horizontalScrollbar->draw(target, statesForScrollbars);
         m_verticalScrollbar->draw(target, statesForScrollbars);
@@ -1407,7 +1428,7 @@ namespace tgui
         newNode->text.setFont(m_fontCached);
         newNode->text.setColor(m_textColorCached);
         newNode->text.setOpacity(m_opacityCached);
-        newNode->text.setCharacterSize(m_textSize);
+        newNode->text.setCharacterSize(m_textSizeCached);
         newNode->text.setString(text);
         newNode->expanded = true;
         newNode->parent = parent;
@@ -1466,7 +1487,7 @@ namespace tgui
         }
         else // Root node
         {
-            for (auto& node : m_nodes)
+            for (const auto& node : m_nodes)
             {
                 if (node->text.getString() != hierarchy.back())
                     continue;
@@ -1502,15 +1523,15 @@ namespace tgui
         if (m_selectedItem >= 0)
         {
             if ((m_selectedItem == m_hoveredItem) && m_selectedTextColorHoverCached.isSet())
-                m_visibleNodes[m_selectedItem]->text.setColor(m_selectedTextColorHoverCached);
+                m_visibleNodes[static_cast<std::size_t>(m_selectedItem)]->text.setColor(m_selectedTextColorHoverCached);
             else if (m_selectedTextColorCached.isSet())
-                m_visibleNodes[m_selectedItem]->text.setColor(m_selectedTextColorCached);
+                m_visibleNodes[static_cast<std::size_t>(m_selectedItem)]->text.setColor(m_selectedTextColorCached);
         }
 
         if ((m_hoveredItem >= 0) && (m_selectedItem != m_hoveredItem))
         {
             if (m_textColorHoverCached.isSet())
-                m_visibleNodes[m_hoveredItem]->text.setColor(m_textColorHoverCached);
+                m_visibleNodes[static_cast<std::size_t>(m_hoveredItem)]->text.setColor(m_textColorHoverCached);
         }
     }
 
@@ -1524,9 +1545,9 @@ namespace tgui
         if (m_hoveredItem >= 0)
         {
             if ((m_selectedItem == m_hoveredItem) && m_selectedTextColorCached.isSet())
-                m_visibleNodes[m_hoveredItem]->text.setColor(m_selectedTextColorCached);
+                m_visibleNodes[static_cast<std::size_t>(m_hoveredItem)]->text.setColor(m_selectedTextColorCached);
             else
-                m_visibleNodes[m_hoveredItem]->text.setColor(m_textColorCached);
+                m_visibleNodes[static_cast<std::size_t>(m_hoveredItem)]->text.setColor(m_textColorCached);
         }
 
         m_hoveredItem = item;
@@ -1543,16 +1564,17 @@ namespace tgui
         if (m_selectedItem >= 0)
         {
             if ((m_selectedItem == m_hoveredItem) && m_textColorHoverCached.isSet())
-                m_visibleNodes[m_selectedItem]->text.setColor(m_textColorHoverCached);
+                m_visibleNodes[static_cast<std::size_t>(m_selectedItem)]->text.setColor(m_textColorHoverCached);
             else
-                m_visibleNodes[m_selectedItem]->text.setColor(m_textColorCached);
+                m_visibleNodes[static_cast<std::size_t>(m_selectedItem)]->text.setColor(m_textColorCached);
         }
 
         m_selectedItem = item;
         if (m_selectedItem >= 0)
         {
             std::vector<String> hierarchy;
-            auto* node = m_visibleNodes[m_selectedItem].get();
+            auto* node = m_visibleNodes[static_cast<std::size_t>(m_selectedItem)].get();
+            assert(node != nullptr);
             while (node)
             {
                 hierarchy.insert(hierarchy.begin(), node->text.getString());
@@ -1591,6 +1613,13 @@ namespace tgui
         }
 
         return nullptr;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr TreeView::clone() const
+    {
+        return std::make_shared<TreeView>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

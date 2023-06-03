@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -94,15 +94,15 @@ const char* getLibraryName(JNIEnv* lJNIEnv, jobject& objectActivityInfo)
     // Convert the application name to a C++ string and return it
     const jsize applicationNameLength = lJNIEnv->GetStringUTFLength(valueString);
     const char* applicationName = lJNIEnv->GetStringUTFChars(valueString, NULL);
-    if (applicationNameLength >= 256)
+    if (applicationNameLength < 0 || applicationNameLength >= 256)
     {
         LOGE("The value of 'tgui.app.lib_name' must not be longer than 255 characters.");
         exit(1);
     }
 
     static char name[256];
-    strncpy(name, applicationName, applicationNameLength);
-    name[applicationNameLength] = '\0';
+    strncpy(name, applicationName, static_cast<size_t>(applicationNameLength));
+    name[static_cast<size_t>(applicationNameLength)] = '\0';
 
     lJNIEnv->ReleaseStringUTFChars(valueString, applicationName);
     return name;
@@ -136,11 +136,21 @@ void* loadLibrary(const char* libraryName, JNIEnv* lJNIEnv, jobject& ObjectActiv
     const char* libraryPath = lJNIEnv->GetStringUTFChars(javaLibraryPath, NULL);
 
     // Manually load the library
-    void * handle = dlopen(libraryPath, RTLD_NOW | RTLD_GLOBAL);
+    void* handle = dlopen(libraryPath, RTLD_NOW | RTLD_GLOBAL);
     if (!handle)
     {
-        LOGE("dlopen(\"%s\"): %s", libraryPath, dlerror());
-        exit(1);
+        // When minSdkVersion is set to 23 (Android 6.0) or higher, the above dlopen call may fail to find the library.
+        // Searching for the library filename, without a path, makes Android automatically find the library at the correct location.
+        jstring javaLibraryFilename = static_cast<jstring>(ObjectName);
+        const char* libraryFilename = lJNIEnv->GetStringUTFChars(javaLibraryFilename, NULL);
+        handle = dlopen(libraryFilename, RTLD_NOW | RTLD_GLOBAL);
+        if (!handle)
+        {
+            LOGE("dlopen(\"%s\"): %s", libraryPath, dlerror());
+            exit(1);
+        }
+
+        lJNIEnv->ReleaseStringUTFChars(javaLibraryFilename, libraryFilename);
     }
 
     // Release the Java string
@@ -208,15 +218,16 @@ JNIEXPORT void ANativeActivity_onCreate(ANativeActivity* activity, void* savedSt
     loadLibrary("tgui", lJNIEnv, ObjectActivityInfo);
 #endif
 
-    // Call the original ANativeActivity_onCreate function
-    void* handle = loadLibrary(getLibraryName(lJNIEnv, ObjectActivityInfo), lJNIEnv, ObjectActivityInfo);
-    activityOnCreatePointer ANativeActivity_onCreate = reinterpret_cast<activityOnCreatePointer>(dlsym(handle, "ANativeActivity_onCreate"));
+    // Call the original ANativeActivity_onCreate function (the one in the library specified with the "tgui.app.lib_name" property)
+    const char* libName = getLibraryName(lJNIEnv, ObjectActivityInfo);
+    void* handle = loadLibrary(libName, lJNIEnv, ObjectActivityInfo);
+    activityOnCreatePointer AppDll_ANativeActivity_onCreate = reinterpret_cast<activityOnCreatePointer>(dlsym(handle, "ANativeActivity_onCreate"));
 
-    if (!ANativeActivity_onCreate)
+    if (!AppDll_ANativeActivity_onCreate)
     {
         LOGE("tgui-activity: Undefined symbol ANativeActivity_onCreate");
         exit(1);
     }
 
-    ANativeActivity_onCreate(activity, savedState, savedStateSize);
+    AppDll_ANativeActivity_onCreate(activity, savedState, savedStateSize);
 }

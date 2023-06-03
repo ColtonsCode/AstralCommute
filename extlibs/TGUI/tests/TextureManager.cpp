@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,26 +23,15 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/TextureManager.hpp>
-#include <TGUI/Exception.hpp>
-#include <TGUI/Texture.hpp>
 
-#if TGUI_HAS_BACKEND_SFML
-    #include <SFML/System/Err.hpp>
+#if !TGUI_BUILD_AS_CXX_MODULE
+    #include <TGUI/TextureManager.hpp>
 #endif
 
 TEST_CASE("[TextureManager]")
 {
-#if TGUI_HAS_BACKEND_SFML
-    std::streambuf *oldbuf = sf::err().rdbuf(0); // Prevent SFML from printing a warning
-#endif
-
     tgui::Texture texture;
     REQUIRE(tgui::TextureManager::getTexture(texture, "NonExistent.png", true) == nullptr);
-
-#if TGUI_HAS_BACKEND_SFML
-    sf::err().rdbuf(oldbuf);
-#endif
 
     tgui::Texture texture1;
     tgui::Texture texture2;

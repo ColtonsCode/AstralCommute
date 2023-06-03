@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -24,27 +24,23 @@
 
 
 #include <TGUI/Filesystem.hpp>
+#include <TGUI/Global.hpp>
 
-#include <cstdlib> // getenv
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cstdlib> // getenv
+#endif
 
-#if !defined(TGUI_SYSTEM_WINDOWS)
-    #include <unistd.h> // getuid
+#if defined(TGUI_SYSTEM_WINDOWS)
+    #include <TGUI/extlibs/IncludeWindows.hpp>
+#else
+    #include <unistd.h> // getuid, getcwd
     #include <pwd.h> // getpwuid
-#endif
 
-#if !defined(TGUI_USE_STD_FILESYSTEM) && !defined(TGUI_SYSTEM_WINDOWS)
-    #include <errno.h> // errno
-    #include <unistd.h> // getcwd
-#endif
-
-#if !defined(TGUI_USE_STD_FILESYSTEM_FILE_TIME)
-    #if defined(TGUI_SYSTEM_WINDOWS)
-        #include <TGUI/WindowsInclude.hpp>
-    #else
+    #if !defined(TGUI_USE_STD_FILESYSTEM) || !defined(TGUI_USE_STD_FILESYSTEM_FILE_TIME)
         #include <sys/types.h> // stat
         #include <sys/stat.h> // stat
-        #include <unistd.h> // getcwd
         #include <dirent.h> // opendir, readdir, closedir
+        #include <cerrno> // errno
     #endif
 #endif
 
@@ -54,8 +50,8 @@ namespace tgui
 {
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#if defined(TGUI_SYSTEM_WINDOWS)
-    static std::time_t FileTimeToUnixTime(FILETIME const& FileTime)
+#if defined(TGUI_SYSTEM_WINDOWS) && !defined(TGUI_USE_STD_FILESYSTEM_FILE_TIME)
+    TGUI_NODISCARD static std::time_t FileTimeToUnixTime(FILETIME const& FileTime)
     {
         const auto WINDOWS_TICK = 10000000ULL;
         const auto SEC_TO_UNIX_EPOCH = 11644473600ULL;
@@ -130,7 +126,7 @@ namespace tgui
         {
             // If the last character was a slash then add an empty filename
             if (!path.empty())
-                m_parts.push_back("");
+                m_parts.emplace_back("");
         }
 #endif
     }
@@ -229,12 +225,13 @@ namespace tgui
         for (std::size_t i = newPath.m_parts.size(); i > 0; --i)
         {
             if (newPath.m_parts[i-1] == U".")
-                newPath.m_parts.erase(newPath.m_parts.begin() + (i-1));
+                newPath.m_parts.erase(newPath.m_parts.begin() + static_cast<std::ptrdiff_t>(i-1));
             else if (m_parts[i-1] == U"..")
             {
                 if (i > 1)
                 {
-                    newPath.m_parts.erase(newPath.m_parts.begin() + (i-2), newPath.m_parts.begin() + i);
+                    newPath.m_parts.erase(newPath.m_parts.begin() + static_cast<std::ptrdiff_t>(i-2),
+                                          newPath.m_parts.begin() + static_cast<std::ptrdiff_t>(i));
                     --i;
                 }
                 else
@@ -366,7 +363,7 @@ namespace tgui
         const bool created = std::filesystem::create_directory(path, errorCode);
         return created || !errorCode; // "created" will be false for existing directory, but we still return true for that case
 #elif defined(TGUI_SYSTEM_WINDOWS)
-        const DWORD status = CreateDirectoryW(path.asNativeString().c_str(), NULL);
+        const BOOL status = CreateDirectoryW(path.asNativeString().c_str(), nullptr);
         return (status != 0) || (GetLastError() == ERROR_ALREADY_EXISTS);
 #else
         const int status = mkdir(path.asNativeString().c_str(), S_IRWXU | S_IRWXG | S_IRWXO);
@@ -381,11 +378,11 @@ namespace tgui
 #ifdef TGUI_SYSTEM_WINDOWS
     #if defined (_MSC_VER)
         const DWORD requiredBufferSizeHomeDrive = GetEnvironmentVariableW(L"HOMEDRIVE", nullptr, 0);
-        auto bufferHomeDrive = std::make_unique<wchar_t[]>(requiredBufferSizeHomeDrive);
+        auto bufferHomeDrive = MakeUniqueForOverwrite<wchar_t[]>(requiredBufferSizeHomeDrive);
         const DWORD lengthHomeDrive = GetEnvironmentVariableW(L"HOMEDRIVE", bufferHomeDrive.get(), requiredBufferSizeHomeDrive);
 
         const DWORD requiredBufferSizeHomePath = GetEnvironmentVariableW(L"HOMEPATH", nullptr, 0);
-        auto bufferHomePath = std::make_unique<wchar_t[]>(requiredBufferSizeHomePath);
+        auto bufferHomePath = MakeUniqueForOverwrite<wchar_t[]>(requiredBufferSizeHomePath);
         const DWORD lengthHomePath = GetEnvironmentVariableW(L"HOMEPATH", bufferHomePath.get(), requiredBufferSizeHomePath);
 
         if ((lengthHomeDrive + 1 == requiredBufferSizeHomeDrive) && (lengthHomePath + 1 == requiredBufferSizeHomePath))
@@ -405,7 +402,7 @@ namespace tgui
             return Path(homeDir);
 #endif
 
-        return Path();
+        return {};
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -417,18 +414,20 @@ namespace tgui
         return Path{std::filesystem::current_path(errorCode)};
 #elif defined(TGUI_SYSTEM_WINDOWS)
         const DWORD requiredBufferSize = GetCurrentDirectoryW(0, nullptr);
-        auto buffer = std::make_unique<wchar_t[]>(requiredBufferSize);
+        auto buffer = MakeUniqueForOverwrite<wchar_t[]>(requiredBufferSize);
         const DWORD pathLength = GetCurrentDirectoryW(requiredBufferSize, buffer.get());
         if (pathLength + 1 == requiredBufferSize)
             return Path(String(buffer.get(), pathLength));
+        else
+            return Path();
 #else
-        const unsigned BUFFER_SIZE = 4096; // More than enough for any reasonable use and doesn't rely on PATH_MAX
+        const unsigned int BUFFER_SIZE = 4096; // More than enough for any reasonable use and doesn't rely on PATH_MAX
         char buffer[BUFFER_SIZE];
-        if (getcwd(buffer, BUFFER_SIZE))
-            return Path(buffer);
+        if (getcwd(static_cast<char*>(buffer), BUFFER_SIZE))
+            return Path(static_cast<const char*>(buffer));
+        else
+            return {};
 #endif
-
-        return Path();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -439,7 +438,7 @@ namespace tgui
 #ifdef TGUI_SYSTEM_WINDOWS
     #if defined (_MSC_VER)
         const DWORD requiredBufferSize = GetEnvironmentVariableW(L"LOCALAPPDATA", nullptr, 0);
-        auto buffer = std::make_unique<wchar_t[]>(requiredBufferSize);
+        auto buffer = MakeUniqueForOverwrite<wchar_t[]>(requiredBufferSize);
         const DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", buffer.get(), requiredBufferSize);
         if (length + 1 == requiredBufferSize)
             localDataDir = Path(String(buffer.get(), length));
@@ -491,7 +490,7 @@ namespace tgui
 
         do
         {
-            String filename = entry.cFileName;
+            String filename = static_cast<const wchar_t*>(entry.cFileName);
             if ((filename == U".") || (filename == U".."))
                 continue;
 
@@ -513,10 +512,10 @@ namespace tgui
             return fileList;
 
         struct dirent* entry = nullptr;
-        while ((entry = readdir(dir)) != NULL)
+        while ((entry = readdir(dir)) != nullptr)
         {
-            const String filename(entry->d_name);
-            if ((filename == ".") || (filename == ".."))
+            const String filename(static_cast<const char*>(entry->d_name));
+            if ((filename == U".") || (filename == U".."))
                 continue;
 
             const Path filePath = path / filename;

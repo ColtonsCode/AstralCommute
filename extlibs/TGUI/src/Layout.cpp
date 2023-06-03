@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,13 +25,13 @@
 
 #include <TGUI/Layout.hpp>
 #include <TGUI/Widget.hpp>
-#include <TGUI/GuiBase.hpp>
+#include <TGUI/Backend/Window/BackendGui.hpp>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace tgui
 {
-    static std::pair<String, String> parseMinMaxExpresssion(const String& expression)
+    TGUI_NODISCARD static std::pair<String, String> parseMinMaxExpresssion(const String& expression)
     {
         unsigned int bracketCount = 0;
         auto commaOrBracketPos = expression.find_first_of(",()");
@@ -78,16 +78,16 @@ namespace tgui
             if (expression.back() == '%')
             {
                 // We don't know if we have to bind the width or height, so bind "size" and let the connectWidget function figure it out later
-                if (expression == "100%")
+                if (expression == U"100%")
                 {
-                    m_boundString = "&.innersize";
+                    m_boundString = U"&.innersize";
                     m_operation = Operation::BindingString;
                 }
                 else // value is a fraction of parent size
                 {
                     *this = Layout{Layout::Operation::Multiplies,
                                    std::make_unique<Layout>(expression.substr(0, expression.length()-1).toFloat() / 100.f),
-                                   std::make_unique<Layout>("&.innersize")};
+                                   std::make_unique<Layout>(U"&.innersize")};
                 }
             }
             else
@@ -166,7 +166,7 @@ namespace tgui
             {
                 // Find corresponding closing bracket
                 unsigned int bracketCount = 0;
-                auto bracketPos = expression.find_first_of("()", searchPos + 1);
+                auto bracketPos = expression.find_first_of(U"()", searchPos + 1);
                 while (bracketPos != String::npos)
                 {
                     if (expression[bracketPos] == '(')
@@ -181,13 +181,13 @@ namespace tgui
                             *this = Layout{expression.substr(1, expression.size()-2)};
                             return;
                         }
-                        else if ((searchPos == 3) && (bracketPos == expression.size()-1) && (expression.substr(0, 3) == "min"))
+                        else if ((searchPos == 3) && (bracketPos == expression.size()-1) && (expression.substr(0, 3) == U"min"))
                         {
                             const auto& minSubExpressions = parseMinMaxExpresssion(expression.substr(4, expression.size() - 5));
                             *this = Layout{Operation::Minimum, std::make_unique<Layout>(minSubExpressions.first), std::make_unique<Layout>(minSubExpressions.second)};
                             return;
                         }
-                        else if ((searchPos == 3) && (bracketPos == expression.size()-1) && (expression.substr(0, 3) == "max"))
+                        else if ((searchPos == 3) && (bracketPos == expression.size()-1) && (expression.substr(0, 3) == U"max"))
                         {
                             const auto& maxSubExpressions = parseMinMaxExpresssion(expression.substr(4, expression.size() - 5));
                             *this = Layout{Operation::Maximum, std::make_unique<Layout>(maxSubExpressions.first), std::make_unique<Layout>(maxSubExpressions.second)};
@@ -234,53 +234,54 @@ namespace tgui
 
         // First perform all * and / operations
         auto operandIt = operands.begin();
-        for (std::size_t i = 0; i < operators.size(); ++i)
+        for (const auto& operatorToApply : operators)
         {
-            if ((operators[i] == Operation::Multiplies) || (operators[i] == Operation::Divides))
+            if ((operatorToApply != Operation::Multiplies) && (operatorToApply != Operation::Divides))
             {
-                auto nextOperandIt = operandIt;
-                std::advance(nextOperandIt, 1);
-
-                (*operandIt) = Layout{operators[i],
-                                      std::make_unique<Layout>(*operandIt),
-                                      std::make_unique<Layout>(*nextOperandIt)};
-
-                operands.erase(nextOperandIt);
-            }
-            else
                 ++operandIt;
+                continue;
+            }
+
+            auto nextOperandIt = operandIt;
+            std::advance(nextOperandIt, 1);
+
+            (*operandIt) = Layout{operatorToApply,
+                                  std::make_unique<Layout>(*operandIt),
+                                  std::make_unique<Layout>(*nextOperandIt)};
+
+            operands.erase(nextOperandIt);
         }
 
         // Now perform all + and - operations
         operandIt = operands.begin();
-        for (std::size_t i = 0; i < operators.size(); ++i)
+        for (const auto& operatorToApply : operators)
         {
-            if ((operators[i] == Operation::Plus) || (operators[i] == Operation::Minus))
+            if ((operatorToApply != Operation::Plus) && (operatorToApply != Operation::Minus))
+                continue;
+
+            TGUI_ASSERT(operandIt != operands.end(), "First operand not found in plus or minus operation");
+
+            auto nextOperandIt = operandIt;
+            std::advance(nextOperandIt, 1);
+
+            TGUI_ASSERT(nextOperandIt != operands.end(), "Second operand not found in plus or minus operation");
+
+            // Handle unary plus or minus
+            if ((operandIt->m_operation == Operation::Value) && (nextOperandIt->m_operation == Operation::Value) && (operandIt->m_value == 0))
             {
-                TGUI_ASSERT(operandIt != operands.end(), "First operand not found in plus or minus operation");
+                if (operatorToApply == Operation::Minus)
+                    nextOperandIt->m_value = -nextOperandIt->m_value;
 
-                auto nextOperandIt = operandIt;
-                std::advance(nextOperandIt, 1);
-
-                TGUI_ASSERT(nextOperandIt != operands.end(), "Second operand not found in plus or minus operation");
-
-                // Handle unary plus or minus
-                if ((operandIt->m_operation == Operation::Value) && (nextOperandIt->m_operation == Operation::Value) && (operandIt->m_value == 0))
-                {
-                    if (operators[i] == Operation::Minus)
-                        nextOperandIt->m_value = -nextOperandIt->m_value;
-
-                    *operandIt = *nextOperandIt;
-                }
-                else // Normal addition or subtraction
-                {
-                    *operandIt = Layout{operators[i],
-                                        std::make_unique<Layout>(*operandIt),
-                                        std::make_unique<Layout>(*nextOperandIt)};
-                }
-
-                operands.erase(nextOperandIt);
+                *operandIt = *nextOperandIt;
             }
+            else // Normal addition or subtraction
+            {
+                *operandIt = Layout{operatorToApply,
+                                    std::make_unique<Layout>(*operandIt),
+                                    std::make_unique<Layout>(*nextOperandIt)};
+            }
+
+            operands.erase(nextOperandIt);
         }
 
         TGUI_ASSERT(operands.size() == 1, "Layout constructor should reduce expression to single result");
@@ -301,6 +302,7 @@ namespace tgui
             "Layout constructor with bound widget must be called with an operation that involves the widget"
         );
 
+        // TODO: Try to resolve the code duplicate with recalculateValue()
         if (m_operation == Operation::BindingPosX)
             m_value = m_boundWidget->getPosition().x;
         else if (m_operation == Operation::BindingPosY)
@@ -348,12 +350,13 @@ namespace tgui
 
     Layout::Layout(const Layout& other) :
         m_value          {other.m_value},
-        m_parent         {other.m_parent},
+        m_parent         {nullptr},
         m_operation      {other.m_operation},
         m_leftOperand    {other.m_leftOperand ? std::make_unique<Layout>(*other.m_leftOperand) : nullptr},
         m_rightOperand   {other.m_rightOperand ? std::make_unique<Layout>(*other.m_rightOperand) : nullptr},
         m_boundWidget    {other.m_boundWidget},
-        m_boundString    {other.m_boundString}
+        m_boundString    {other.m_boundString},
+        m_connectedWidgetCallback{nullptr}
     {
         // Disconnect the bound widget if a string was used, the same name may apply to a different widget now
         if (!m_boundString.empty())
@@ -364,14 +367,15 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Layout::Layout(Layout&& other) :
+    Layout::Layout(Layout&& other) noexcept :
         m_value          {std::move(other.m_value)},
         m_parent         {std::move(other.m_parent)},
         m_operation      {other.m_operation},
         m_leftOperand    {std::move(other.m_leftOperand)},
         m_rightOperand   {std::move(other.m_rightOperand)},
         m_boundWidget    {other.m_boundWidget},
-        m_boundString    {std::move(other.m_boundString)}
+        m_boundString    {std::move(other.m_boundString)},
+        m_connectedWidgetCallback{std::move(other.m_connectedWidgetCallback)}
     {
         resetPointers();
     }
@@ -385,12 +389,13 @@ namespace tgui
             unbindLayout();
 
             m_value           = other.m_value;
-            m_parent          = other.m_parent;
+            m_parent          = nullptr;
             m_operation       = other.m_operation;
             m_leftOperand     = other.m_leftOperand ? std::make_unique<Layout>(*other.m_leftOperand) : nullptr;
             m_rightOperand    = other.m_rightOperand ? std::make_unique<Layout>(*other.m_rightOperand) : nullptr;
             m_boundWidget     = other.m_boundWidget;
             m_boundString     = other.m_boundString;
+            m_connectedWidgetCallback = nullptr;
 
             // Disconnect the bound widget if a string was used, the same name may apply to a different widget now
             if (!m_boundString.empty())
@@ -404,7 +409,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Layout& Layout::operator=(Layout&& other)
+    Layout& Layout::operator=(Layout&& other) noexcept
     {
         if (this != &other)
         {
@@ -417,6 +422,7 @@ namespace tgui
             m_rightOperand    = std::move(other.m_rightOperand);
             m_boundWidget     = other.m_boundWidget;
             m_boundString     = std::move(other.m_boundString);
+            m_connectedWidgetCallback = std::move(other.m_connectedWidgetCallback);
 
             resetPointers();
         }
@@ -429,6 +435,20 @@ namespace tgui
     Layout::~Layout()
     {
         unbindLayout();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void Layout::replaceValue(const Layout& value)
+    {
+        // Copy the layout, but keep the original parent
+        const auto oldParent = m_parent;
+        *this = value;
+        m_parent = oldParent;
+
+        // Inform the parent that the value of the layout has changed
+        if (m_parent)
+            m_parent->recalculateValue();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -489,8 +509,8 @@ namespace tgui
         }
         else
         {
-            if (m_boundString == "&.innersize")
-                return "100%";
+            if (m_boundString == U"&.innersize")
+                return U"100%";
 
             // Hopefully the expression is stored in the bound string, otherwise (i.e. when bind functions were used) it is infeasible to turn it into a string
             if (!m_boundString.empty())
@@ -597,7 +617,7 @@ namespace tgui
         parseBindingStringRecursive(widget, xAxis);
 
         // Restore the callback function
-        m_connectedWidgetCallback = valueChangedCallbackHandler;
+        m_connectedWidgetCallback = std::move(valueChangedCallbackHandler);
 
         if (m_value != oldValue)
         {
@@ -707,6 +727,20 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    Layout* Layout::getLeftOperand() const
+    {
+        return m_leftOperand ? m_leftOperand.get() : nullptr;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Layout* Layout::getRightOperand() const
+    {
+        return m_rightOperand ? m_rightOperand.get() : nullptr;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     void Layout::parseBindingStringRecursive(Widget* widget, bool xAxis)
     {
         if (m_leftOperand)
@@ -726,66 +760,66 @@ namespace tgui
 
     void Layout::parseBindingString(const String& expression, Widget* widget, bool xAxis)
     {
-        if (expression == "x")
+        if (expression == U"x")
         {
             m_operation = Operation::BindingPosX;
             m_boundWidget = widget;
         }
-        else if (expression == "y")
+        else if (expression == U"y")
         {
             m_operation = Operation::BindingPosY;
             m_boundWidget = widget;
         }
-        else if (expression == "left")
+        else if (expression == U"left")
         {
             m_operation = Operation::BindingLeft;
             m_boundWidget = widget;
         }
-        else if (expression == "top")
+        else if (expression == U"top")
         {
             m_operation = Operation::BindingTop;
             m_boundWidget = widget;
         }
-        else if (expression == "w" || expression == "width")
+        else if (expression == U"w" || expression == U"width")
         {
             m_operation = Operation::BindingWidth;
             m_boundWidget = widget;
         }
-        else if (expression == "h" || expression == "height")
+        else if (expression == U"h" || expression == U"height")
         {
             m_operation = Operation::BindingHeight;
             m_boundWidget = widget;
         }
-        else if (expression == "iw" || expression == "innerwidth")
+        else if (expression == U"iw" || expression == U"innerwidth")
         {
             m_operation = Operation::BindingInnerWidth;
             m_boundWidget = widget;
         }
-        else if (expression == "ih" || expression == "innerheight")
+        else if (expression == U"ih" || expression == U"innerheight")
         {
             m_operation = Operation::BindingInnerHeight;
             m_boundWidget = widget;
         }
-        else if (expression == "size")
+        else if (expression == U"size")
         {
             if (xAxis)
-                return parseBindingString("width", widget, xAxis);
+                return parseBindingString(U"width", widget, xAxis);
             else
-                return parseBindingString("height", widget, xAxis);
+                return parseBindingString(U"height", widget, xAxis);
         }
-        else if (expression == "innersize")
+        else if (expression == U"innersize")
         {
             if (xAxis)
-                return parseBindingString("innerwidth", widget, xAxis);
+                return parseBindingString(U"innerwidth", widget, xAxis);
             else
-                return parseBindingString("innerheight", widget, xAxis);
+                return parseBindingString(U"innerheight", widget, xAxis);
         }
-        else if ((expression == "pos") || (expression == "position"))
+        else if ((expression == U"pos") || (expression == U"position"))
         {
             if (xAxis)
-                return parseBindingString("x", widget, xAxis);
+                return parseBindingString(U"x", widget, xAxis);
             else
-                return parseBindingString("y", widget, xAxis);
+                return parseBindingString(U"y", widget, xAxis);
         }
         else
         {
@@ -793,7 +827,7 @@ namespace tgui
             if (dotPos != String::npos)
             {
                 const String widgetName = expression.substr(0, dotPos);
-                if (widgetName == "parent" || widgetName == "&")
+                if (widgetName == U"parent" || widgetName == U"&")
                 {
                     if (widget->getParent())
                         return parseBindingString(expression.substr(dotPos+1), widget->getParent(), xAxis);
@@ -808,10 +842,10 @@ namespace tgui
                     if (container != nullptr)
                     {
                         const auto& widgets = container->getWidgets();
-                        for (std::size_t i = 0; i < widgets.size(); ++i)
+                        for (const auto& childWidget : widgets)
                         {
-                            if (widgets[i]->getWidgetName().equalIgnoreCase(widgetName))
-                                return parseBindingString(expression.substr(dotPos+1), widgets[i].get(), xAxis);
+                            if (childWidget->getWidgetName().equalIgnoreCase(widgetName))
+                                return parseBindingString(expression.substr(dotPos+1), childWidget.get(), xAxis);
                         }
                     }
 
@@ -819,10 +853,10 @@ namespace tgui
                     if (widget->getParent())
                     {
                         const auto& widgets = widget->getParent()->getWidgets();
-                        for (std::size_t i = 0; i < widgets.size(); ++i)
+                        for (const auto& siblingWidget : widgets)
                         {
-                            if (widgets[i]->getWidgetName().equalIgnoreCase(widgetName))
-                                return parseBindingString(expression.substr(dotPos+1), widgets[i].get(), xAxis);
+                            if (siblingWidget->getWidgetName().equalIgnoreCase(widgetName))
+                                return parseBindingString(expression.substr(dotPos+1), siblingWidget.get(), xAxis);
                         }
                     }
                     else // If there is no parent yet then patiently wait until the widget is added to its parent
@@ -924,63 +958,63 @@ namespace tgui
     {
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Layout bindPosX(Widget::Ptr widget)
+        Layout bindPosX(const Widget::Ptr& widget)
         {
             return Layout{Layout::Operation::BindingPosX, widget.get()};
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Layout bindPosY(Widget::Ptr widget)
+        Layout bindPosY(const Widget::Ptr& widget)
         {
             return Layout{Layout::Operation::BindingPosY, widget.get()};
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Layout bindLeft(Widget::Ptr widget)
+        Layout bindLeft(const Widget::Ptr& widget)
         {
             return Layout{Layout::Operation::BindingLeft, widget.get()};
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Layout bindTop(Widget::Ptr widget)
+        Layout bindTop(const Widget::Ptr& widget)
         {
             return Layout{Layout::Operation::BindingTop, widget.get()};
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Layout bindWidth(Widget::Ptr widget)
+        Layout bindWidth(const Widget::Ptr& widget)
         {
             return Layout{Layout::Operation::BindingWidth, widget.get()};
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Layout bindHeight(Widget::Ptr widget)
+        Layout bindHeight(const Widget::Ptr& widget)
         {
             return Layout{Layout::Operation::BindingHeight, widget.get()};
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Layout bindInnerWidth(Container::Ptr container)
+        Layout bindInnerWidth(const Container::Ptr& container)
         {
             return Layout{Layout::Operation::BindingInnerWidth, container.get()};
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Layout bindInnerHeight(Container::Ptr container)
+        Layout bindInnerHeight(const Container::Ptr& container)
         {
             return Layout{Layout::Operation::BindingInnerHeight, container.get()};
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Layout bindRight(Widget::Ptr widget)
+        Layout bindRight(const Widget::Ptr& widget)
         {
             return Layout{Layout::Operation::Plus,
                           std::make_unique<Layout>(Layout::Operation::BindingLeft, widget.get()),
@@ -989,7 +1023,7 @@ namespace tgui
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Layout bindBottom(Widget::Ptr widget)
+        Layout bindBottom(const Widget::Ptr& widget)
         {
             return Layout{Layout::Operation::Plus,
                           std::make_unique<Layout>(Layout::Operation::BindingTop, widget.get()),
@@ -998,42 +1032,42 @@ namespace tgui
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Layout2d bindPosition(Widget::Ptr widget)
+        Layout2d bindPosition(const Widget::Ptr& widget)
         {
             return {bindPosX(widget), bindPosY(widget)};
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Layout2d bindSize(Widget::Ptr widget)
+        Layout2d bindSize(const Widget::Ptr& widget)
         {
             return {bindWidth(widget), bindHeight(widget)};
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Layout2d bindInnerSize(Container::Ptr container)
+        Layout2d bindInnerSize(const Container::Ptr& container)
         {
             return {bindInnerWidth(container), bindInnerHeight(container)};
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Layout bindWidth(GuiBase& gui)
+        Layout bindWidth(const BackendGui& gui)
         {
             return bindWidth(gui.getContainer());
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Layout bindHeight(GuiBase& gui)
+        Layout bindHeight(const BackendGui& gui)
         {
             return bindHeight(gui.getContainer());
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Layout2d bindSize(GuiBase& gui)
+        Layout2d bindSize(const BackendGui& gui)
         {
             return bindSize(gui.getContainer());
         }

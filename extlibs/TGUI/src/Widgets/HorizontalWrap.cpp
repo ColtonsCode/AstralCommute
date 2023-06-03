@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -29,6 +29,10 @@
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char HorizontalWrap::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     HorizontalWrap::HorizontalWrap(const char* typeName, bool initRenderer) :
@@ -52,7 +56,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    HorizontalWrap::Ptr HorizontalWrap::copy(HorizontalWrap::ConstPtr layout)
+    HorizontalWrap::Ptr HorizontalWrap::copy(const HorizontalWrap::ConstPtr& layout)
     {
         if (layout)
             return std::static_pointer_cast<HorizontalWrap>(layout->clone());
@@ -88,6 +92,13 @@ namespace tgui
             if (lineHeight < size.y)
                 lineHeight = size.y;
         }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr HorizontalWrap::clone() const
+    {
+        return std::make_shared<HorizontalWrap>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

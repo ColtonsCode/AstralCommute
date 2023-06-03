@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,10 +25,18 @@
 
 #include <TGUI/Widgets/MessageBox.hpp>
 
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cmath>
+#endif
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char MessageBox::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     MessageBox::MessageBox(const char* typeName, bool initRenderer) :
@@ -44,9 +52,10 @@ namespace tgui
         setTextSize(getGlobalTextSize());
 
         add(m_label, "#TGUI_INTERNAL$MessageBoxText#");
-        m_label->setTextSize(m_textSize);
+        m_label->setTextSize(m_textSizeCached);
 
         setClientSize({400, 150});
+        m_autoSize = true;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -55,18 +64,24 @@ namespace tgui
         ChildWindow      {other},
         onButtonPress    {other.onButtonPress},
         m_loadedThemeFile{other.m_loadedThemeFile},
-        m_buttonClassName{other.m_buttonClassName}
+        m_buttonClassName{other.m_buttonClassName},
+        m_autoSize       {other.m_autoSize},
+        m_labelAlignment {other.m_labelAlignment},
+        m_buttonAlignment{other.m_buttonAlignment}
     {
         identifyLabelAndButtons();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    MessageBox::MessageBox(MessageBox&& other) :
+    MessageBox::MessageBox(MessageBox&& other) noexcept :
         ChildWindow      {std::move(other)},
         onButtonPress    {std::move(other.onButtonPress)},
         m_loadedThemeFile{std::move(other.m_loadedThemeFile)},
         m_buttonClassName{std::move(other.m_buttonClassName)},
+        m_autoSize       {std::move(other.m_autoSize)},
+        m_labelAlignment {std::move(other.m_labelAlignment)},
+        m_buttonAlignment{std::move(other.m_buttonAlignment)},
         m_buttons        {std::move(other.m_buttons)},
         m_label          {std::move(other.m_label)}
     {
@@ -84,6 +99,9 @@ namespace tgui
             onButtonPress     = other.onButtonPress;
             m_loadedThemeFile = other.m_loadedThemeFile;
             m_buttonClassName = other.m_buttonClassName;
+            m_autoSize        = other.m_autoSize;
+            m_labelAlignment  = other.m_labelAlignment;
+            m_buttonAlignment = other.m_buttonAlignment;
 
             identifyLabelAndButtons();
         }
@@ -93,17 +111,19 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    MessageBox& MessageBox::operator= (MessageBox&& other)
+    MessageBox& MessageBox::operator= (MessageBox&& other) noexcept
     {
         if (this != &other)
         {
-            ChildWindow::operator=(std::move(other));
-
             onButtonPress     = std::move(other.onButtonPress);
             m_loadedThemeFile = std::move(other.m_loadedThemeFile);
             m_buttonClassName = std::move(other.m_buttonClassName);
+            m_autoSize        = std::move(other.m_autoSize);
+            m_labelAlignment  = std::move(other.m_labelAlignment);
+            m_buttonAlignment = std::move(other.m_buttonAlignment);
             m_buttons         = std::move(other.m_buttons);
             m_label           = std::move(other.m_label);
+            ChildWindow::operator=(std::move(other));
 
             for (std::size_t i = 0; i < m_buttons.size(); ++i)
                 connectButtonPressSignal(i);
@@ -114,7 +134,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    MessageBox::Ptr MessageBox::create(String title, String text, std::vector<String> buttons)
+    MessageBox::Ptr MessageBox::create(const String& title, const String& text, const std::vector<String>& buttons)
     {
         auto messageBox = std::make_shared<MessageBox>();
         messageBox->setTitle(title);
@@ -127,7 +147,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    MessageBox::Ptr MessageBox::copy(MessageBox::ConstPtr messageBox)
+    MessageBox::Ptr MessageBox::copy(const MessageBox::ConstPtr& messageBox)
     {
         if (messageBox)
             return std::static_pointer_cast<MessageBox>(messageBox->clone());
@@ -158,9 +178,38 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    const MessageBoxRenderer* MessageBox::getRenderer() const
+    void MessageBox::setSize(const Layout2d& size)
     {
-        return aurora::downcast<const MessageBoxRenderer*>(Widget::getRenderer());
+        // Provide a way to re-enable auto-size after a manual size was previously provided
+        if ((size.x.isConstant() && size.x.getValue() == 0) && (size.y.isConstant() && size.y.getValue() == 0))
+        {
+            m_autoSize = true;
+            rearrange();
+            return;
+        }
+
+        ChildWindow::setSize(size);
+
+        m_autoSize = false;
+        rearrange();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void MessageBox::setClientSize(const Layout2d& size)
+    {
+        // Provide a way to re-enable auto-size after a manual size was previously provided
+        if ((size.x.isConstant() && size.x.getValue() == 0) && (size.y.isConstant() && size.y.getValue() == 0))
+        {
+            m_autoSize = true;
+            rearrange();
+            return;
+        }
+
+        ChildWindow::setClientSize(size);
+
+        m_autoSize = false;
+        rearrange();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -181,14 +230,12 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void MessageBox::setTextSize(unsigned int size)
+    void MessageBox::updateTextSize()
     {
-        m_textSize = size;
-
-        m_label->setTextSize(size);
+        m_label->setTextSize(m_textSizeCached);
 
         for (auto& button : m_buttons)
-            button->setTextSize(m_textSize);
+            button->setTextSize(m_textSizeCached);
 
         rearrange();
     }
@@ -199,7 +246,7 @@ namespace tgui
     {
         auto button = Button::create(caption);
         button->setRenderer(getSharedRenderer()->getButton());
-        button->setTextSize(m_textSize);
+        button->setTextSize(m_textSizeCached);
 
         add(button, "#TGUI_INTERNAL$MessageBoxButton:" + caption + "#");
         m_buttons.push_back(button);
@@ -213,10 +260,40 @@ namespace tgui
     std::vector<String> MessageBox::getButtons() const
     {
         std::vector<String> buttonTexts;
-        for (auto& button : m_buttons)
+        for (const auto& button : m_buttons)
             buttonTexts.emplace_back(button->getText());
 
         return buttonTexts;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void MessageBox::setLabelAlignment(Alignment labelAlignment)
+    {
+        m_labelAlignment = labelAlignment;
+        rearrange();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    MessageBox::Alignment MessageBox::getLabelAlignment() const
+    {
+        return m_labelAlignment;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void MessageBox::setButtonAlignment(Alignment buttonAlignment)
+    {
+        m_buttonAlignment = buttonAlignment;
+        rearrange();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    MessageBox::Alignment MessageBox::getButtonAlignment() const
+    {
+        return m_buttonAlignment;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -229,15 +306,15 @@ namespace tgui
         // Calculate the button size
         if (m_fontCached)
         {
-            buttonWidth = 4.0f * Text::getLineHeight(m_fontCached, m_textSize);
-            buttonHeight = Text::getLineHeight(m_fontCached, m_textSize) * 1.25f;
+            buttonWidth = 4.0f * Text::getLineHeight(m_fontCached, m_textSizeCached);
+            buttonHeight = std::round(Text::getLineHeight(m_fontCached, m_textSizeCached) * 1.25f);
 
             for (const auto& button : m_buttons)
             {
                 /// TODO: Implement a way to calculate text size without creating a text object?
                 Text tempText;
                 tempText.setFont(m_fontCached);
-                tempText.setCharacterSize(m_textSize);
+                tempText.setCharacterSize(m_textSizeCached);
                 tempText.setString(button->getText());
                 const float width = tempText.getSize().x;
                 if (buttonWidth < width * 10.0f / 9.0f)
@@ -246,7 +323,7 @@ namespace tgui
         }
 
         // Calculate the space needed for the buttons
-        const float distance = buttonHeight * 2.0f / 3.0f;
+        const float distance = std::round(buttonHeight * 2.0f / 3.0f);
         float buttonsAreaWidth = distance;
         for (auto& button : m_buttons)
         {
@@ -262,19 +339,55 @@ namespace tgui
             size.x = buttonsAreaWidth;
 
         // Set the size of the window
-        setClientSize(size);
+        if (m_autoSize)
+        {
+            setClientSize(size);
+            m_autoSize = true;
+        }
 
         // Set the text on the correct position
-        m_label->setPosition({distance, distance});
+        if (m_labelAlignment == Alignment::Left)
+        {
+            m_label->setPosition({distance, distance});
+        }
+        else if (m_labelAlignment == Alignment::Right)
+        {
+            m_label->setPosition({getClientSize().x - distance - m_label->getSize().x, distance});
+        }
+        else // if (m_labelAlignment == Alignment::Center)
+        {
+            m_label->setPosition({(getClientSize().x - m_label->getSize().x) / 2.f, distance});
+        }
 
         // Set the buttons on the correct position
-        float leftPosition = 0;
-        const float topPosition = 2*distance + m_label->getSize().y;
-        for (auto& button : m_buttons)
+        const float topPosition = getClientSize().y - distance - buttonHeight;
+        if (m_buttonAlignment == Alignment::Left)
         {
-            leftPosition += distance + ((size.x - buttonsAreaWidth) / (m_buttons.size()+1));
-            button->setPosition({leftPosition, topPosition});
-            leftPosition += button->getSize().x;
+            float leftPosition = distance;
+            for (auto& button : m_buttons)
+            {
+                button->setPosition({leftPosition, topPosition});
+                leftPosition += button->getSize().x + distance;
+            }
+        }
+        else if (m_buttonAlignment == Alignment::Right)
+        {
+            float leftPosition = getClientSize().x;
+            for (auto& button : m_buttons)
+            {
+                leftPosition -= distance + button->getSize().x;
+                button->setPosition({leftPosition, topPosition});
+            }
+        }
+        else // if (m_buttonAlignment == Alignment::Center)
+        {
+            float leftPosition = 0;
+            for (auto& button : m_buttons)
+            {
+                leftPosition += distance + ((getClientSize().x - buttonsAreaWidth) / (m_buttons.size()+1));
+                button->setPosition({leftPosition, topPosition});
+                leftPosition += button->getSize().x;
+            }
         }
     }
 
@@ -292,17 +405,17 @@ namespace tgui
 
     void MessageBox::rendererChanged(const String& property)
     {
-        if (property == "TextColor")
+        if (property == U"TextColor")
         {
             m_label->getRenderer()->setTextColor(getSharedRenderer()->getTextColor());
         }
-        else if (property == "Button")
+        else if (property == U"Button")
         {
             const auto& renderer = getSharedRenderer()->getButton();
             for (auto& button : m_buttons)
                 button->setRenderer(renderer);
         }
-        else if (property == "Font")
+        else if (property == U"Font")
         {
             ChildWindow::rendererChanged(property);
 
@@ -322,8 +435,23 @@ namespace tgui
     std::unique_ptr<DataIO::Node> MessageBox::save(SavingRenderersMap& renderers) const
     {
         auto node = ChildWindow::save(renderers);
-        node->propertyValuePairs["TextSize"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_textSize));
-        // Label and buttons are saved indirectly by saving the child window
+
+        node->propertyValuePairs[U"AutoSize"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_autoSize));
+
+        if (m_labelAlignment == Alignment::Left)
+            node->propertyValuePairs[U"LabelAlignment"] = std::make_unique<DataIO::ValueNode>("Left");
+        else if (m_labelAlignment == Alignment::Center)
+            node->propertyValuePairs[U"LabelAlignment"] = std::make_unique<DataIO::ValueNode>("Center");
+        else if (m_labelAlignment == Alignment::Right)
+            node->propertyValuePairs[U"LabelAlignment"] = std::make_unique<DataIO::ValueNode>("Right");
+
+        if (m_buttonAlignment == Alignment::Left)
+            node->propertyValuePairs[U"ButtonAlignment"] = std::make_unique<DataIO::ValueNode>("Left");
+        else if (m_buttonAlignment == Alignment::Center)
+            node->propertyValuePairs[U"ButtonAlignment"] = std::make_unique<DataIO::ValueNode>("Center");
+        else if (m_buttonAlignment == Alignment::Right)
+            node->propertyValuePairs[U"ButtonAlignment"] = std::make_unique<DataIO::ValueNode>("Right");
+
         return node;
     }
 
@@ -336,8 +464,34 @@ namespace tgui
 
         ChildWindow::load(node, renderers);
 
-        if (node->propertyValuePairs["TextSize"])
-            setTextSize(node->propertyValuePairs["TextSize"]->value.toInt());
+        if (node->propertyValuePairs[U"AutoSize"])
+            m_autoSize = Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"AutoSize"]->value).getBool();
+        else
+            m_autoSize = true;
+
+        if (node->propertyValuePairs[U"LabelAlignment"])
+        {
+            if (node->propertyValuePairs[U"LabelAlignment"]->value == U"Left")
+                setLabelAlignment(Alignment::Left);
+            else if (node->propertyValuePairs[U"LabelAlignment"]->value == U"Center")
+                setLabelAlignment(Alignment::Center);
+            else if (node->propertyValuePairs[U"LabelAlignment"]->value == U"Right")
+                setLabelAlignment(Alignment::Right);
+            else
+                throw Exception{U"Failed to parse LabelAlignment property. Only the values Left, Center and Right are correct."};
+        }
+
+        if (node->propertyValuePairs[U"ButtonAlignment"])
+        {
+            if (node->propertyValuePairs[U"ButtonAlignment"]->value == U"Left")
+                setButtonAlignment(Alignment::Left);
+            else if (node->propertyValuePairs[U"ButtonAlignment"]->value == U"Center")
+                setButtonAlignment(Alignment::Center);
+            else if (node->propertyValuePairs[U"ButtonAlignment"]->value == U"Right")
+                setButtonAlignment(Alignment::Right);
+            else
+                throw Exception{U"Failed to parse ButtonAlignment property. Only the values Left, Center and Right are correct."};
+        }
 
         identifyLabelAndButtons();
     }
@@ -346,13 +500,13 @@ namespace tgui
 
     void MessageBox::identifyLabelAndButtons()
     {
-        m_label = get<Label>("#TGUI_INTERNAL$MessageBoxText#");
+        m_label = get<Label>(U"#TGUI_INTERNAL$MessageBoxText#");
 
-        for (unsigned int i = 0; i < m_widgets.size(); ++i)
+        for (const auto& widget : m_widgets)
         {
-            if ((m_widgets[i]->getWidgetName().length() >= 32) && (m_widgets[i]->getWidgetName().substr(0, 32) == "#TGUI_INTERNAL$MessageBoxButton:"))
+            if ((widget->getWidgetName().length() >= 32) && (widget->getWidgetName().substr(0, 32) == U"#TGUI_INTERNAL$MessageBoxButton:"))
             {
-                auto button = std::dynamic_pointer_cast<Button>(m_widgets[i]);
+                auto button = std::dynamic_pointer_cast<Button>(widget);
                 m_buttons.push_back(button);
                 connectButtonPressSignal(m_buttons.size() - 1);
             }
@@ -365,13 +519,20 @@ namespace tgui
 
     void MessageBox::connectButtonPressSignal(std::size_t buttonIndex)
     {
-        TGUI_ASSERT(buttonIndex < m_buttons.size(), "Index shouldn't be out-of-range");
+        TGUI_ASSERT(buttonIndex < m_buttons.size(), "Index shouldn't be out-of-range in MessageBox::connectButtonPressSignal");
         m_buttons[buttonIndex]->onPress.disconnectAll();
         m_buttons[buttonIndex]->onPress(TGUI_LAMBDA_CAPTURE_EQ_THIS{
             // We can't copy button into this lambda because it would cause a memory leak.
             // We can however copy the index and access the button from m_buttons via the copied this pointer.
             onButtonPress.emit(this, m_buttons[buttonIndex]->getText());
         });
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr MessageBox::clone() const
+    {
+        return std::make_shared<MessageBox>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

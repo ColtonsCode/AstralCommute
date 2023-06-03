@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,13 +27,12 @@
 #define TGUI_GUI_BUILDER_BUTTON_PROPERTIES_HPP
 
 #include "WidgetProperties.hpp"
-#include <TGUI/Widgets/Button.hpp>
 
 struct ButtonProperties : WidgetProperties
 {
-    void updateProperty(tgui::Widget::Ptr widget, const tgui::String& property, const tgui::String& value) const override
+    void updateProperty(const tgui::Widget::Ptr& widget, const tgui::String& property, const tgui::String& value) const override
     {
-        auto button = widget->cast<tgui::Button>();
+        auto button = widget->cast<tgui::ButtonBase>(); // Cast to ButtonBase instead of button to reuse code for ToggleButton
         if (property == "Text")
             button->setText(value);
         else if (property == "TextSize")
@@ -42,10 +41,10 @@ struct ButtonProperties : WidgetProperties
             WidgetProperties::updateProperty(widget, property, value);
     }
 
-    PropertyValueMapPair initProperties(tgui::Widget::Ptr widget) const override
+    TGUI_NODISCARD PropertyValueMapPair initProperties(const tgui::Widget::Ptr& widget) const override
     {
         auto pair = WidgetProperties::initProperties(widget);
-        auto button = widget->cast<tgui::Button>();
+        auto button = widget->cast<tgui::ButtonBase>(); // Cast to ButtonBase instead of button to reuse code for ToggleButton
         pair.first["Text"] = {"String", button->getText()};
         pair.first["TextSize"] = {"UInt", tgui::String::fromNumber(button->getTextSize())};
 

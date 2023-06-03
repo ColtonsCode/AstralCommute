@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,16 +27,25 @@
 #define TGUI_GUI_BUILDER_GROUP_PROPERTIES_HPP
 
 #include "WidgetProperties.hpp"
-#include <TGUI/Widgets/Group.hpp>
 
 struct GroupProperties : WidgetProperties
 {
-    PropertyValueMapPair initProperties(tgui::Widget::Ptr widget) const override
+    void updateProperty(const tgui::Widget::Ptr& widget, const tgui::String& property, const tgui::String& value) const override
+    {
+        auto group = widget->cast<tgui::Group>();
+        if (property == "TextSize")
+            group->setTextSize(value.toUInt());
+        else
+            WidgetProperties::updateProperty(widget, property, value);
+    }
+
+    TGUI_NODISCARD PropertyValueMapPair initProperties(const tgui::Widget::Ptr& widget) const override
     {
         auto pair = WidgetProperties::initProperties(widget);
-        auto panel = widget->cast<tgui::Group>();
+        auto group = widget->cast<tgui::Group>();
+        pair.first["TextSize"] = {"UInt", tgui::String::fromNumber(group->getTextSize())};
 
-        const auto renderer = panel->getSharedRenderer();
+        const auto renderer = group->getSharedRenderer();
         pair.second["Padding"] = {"Outline", renderer->getPadding().toString()};
         return pair;
     }

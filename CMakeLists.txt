@@ -2,8 +2,11 @@ cmake_minimum_required(VERSION 3.25)
 
 project(AstralCommute)
 
+
 set(BUILD_SHARED_LIBS False)
 add_subdirectory(extlibs/SFML)
+
+set(TGUI_BACKEND SFML_GRAPHICS)
 add_subdirectory(extlibs/TGUI)
 
 if(LINUX)

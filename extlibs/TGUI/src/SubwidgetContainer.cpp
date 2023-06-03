@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -34,15 +34,14 @@ namespace tgui
     SubwidgetContainer::SubwidgetContainer(const char* typeName, bool initRenderer) :
         Widget{typeName, initRenderer}
     {
-        m_draggableWidget = true;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     void SubwidgetContainer::setSize(const Layout2d& size)
     {
-        m_container->setSize(size);
         Widget::setSize(size);
+        m_container->setSize(getSize());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -55,10 +54,20 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void SubwidgetContainer::setTextSize(unsigned int size)
+    void SubwidgetContainer::setEnabled(bool enabled)
     {
-        m_container->setTextSize(size);
-        Widget::setTextSize(size);
+        Widget::setEnabled(enabled);
+
+        for (auto& widget : m_container->getWidgets())
+            widget->setEnabled(enabled);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void SubwidgetContainer::updateTextSize()
+    {
+        Widget::updateTextSize();
+        m_container->setTextSize(m_textSizeCached);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -77,10 +86,11 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void SubwidgetContainer::leftMousePressed(Vector2f pos)
+    bool SubwidgetContainer::leftMousePressed(Vector2f pos)
     {
-        m_container->leftMousePressed(pos - getPosition());
+        const bool isDragging = m_container->leftMousePressed(pos - getPosition());
         Widget::leftMousePressed(pos);
+        return isDragging;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -133,10 +143,10 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    bool SubwidgetContainer::mouseWheelScrolled(float delta, Vector2f pos)
+    bool SubwidgetContainer::scrolled(float delta, Vector2f pos, bool touch)
     {
-        m_container->mouseWheelScrolled(delta, pos - getPosition());
-        return Widget::mouseWheelScrolled(delta, pos);
+        m_container->scrolled(delta, pos - getPosition(), touch);
+        return Widget::scrolled(delta, pos, touch);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -167,7 +177,54 @@ namespace tgui
 
     Widget::Ptr SubwidgetContainer::askToolTip(Vector2f mousePos)
     {
-        return m_container->askToolTip(mousePos);
+        auto toolTip = m_container->askToolTip(mousePos - getPosition());
+        if (toolTip)
+            return toolTip;
+
+        if (m_toolTip)
+            return getToolTip();
+
+        return nullptr;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void SubwidgetContainer::rendererChanged(const String& property)
+    {
+        // If the property matches the name of a child widget then the value should be a renderer object to be passed to that widget
+        for (const auto& widget : m_container->getWidgets())
+        {
+            const String& name = widget->getWidgetName();
+            if (!name.empty() && (name == property))
+            {
+                auto propertyValue = getSharedRenderer()->getProperty(property);
+                if (propertyValue.getType() != ObjectConverter::Type::None)
+                    widget->setRenderer(propertyValue.getRenderer());
+                else
+                    widget->setRenderer(Theme::getDefault()->getRendererNoThrow(widget->getWidgetType()));
+
+                return;
+            }
+        }
+
+        // If the property starts with "WidgetName." then the part behind the dot is the property name for that widget
+        const auto dotPos = property.find(U'.');
+        if (dotPos != String::npos)
+        {
+            const String& nameToSearch = property.substr(0, dotPos);
+            const String& propertyForChild = property.substr(dotPos + 1);
+            for (const auto& widget : m_container->getWidgets())
+            {
+                const String& name = widget->getWidgetName();
+                if (!name.empty() && (name == nameToSearch))
+                {
+                    widget->getRenderer()->setProperty(propertyForChild, getSharedRenderer()->getProperty(property));
+                    return;
+                }
+            }
+        }
+
+        Widget::rendererChanged(property);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -175,6 +232,71 @@ namespace tgui
     std::unique_ptr<DataIO::Node> SubwidgetContainer::save(SavingRenderersMap& renderers) const
     {
         auto node = Widget::save(renderers);
+
+        // Find the renderer node
+        std::vector<std::unique_ptr<DataIO::Node>>::iterator rendererNodeIt;
+        const String& rendererName = renderers.at(this).second; // Empty if the renderer isn't shared
+        if (rendererName.empty()) // We can't check renderers.at(this).first as Widget::save moved the value
+        {
+            // If the renderer has no name then it isn't shared and we should find the renderer among the child nodes
+            rendererNodeIt = std::find_if(node->children.begin(), node->children.end(), [](const std::unique_ptr<DataIO::Node>& child){
+                return child->name == U"Renderer";
+            });
+            TGUI_ASSERT(rendererNodeIt != node->children.end(), "SubwidgetContainer relies on Widget::save saving the renderer");
+        }
+        else // The renderer is shared with other widgets, we need to look for it in global scope
+        {
+            DataIO::Node* rootNode = node.get();
+            while (rootNode->parent)
+                rootNode = node->parent;
+
+            rendererNodeIt = std::find_if(rootNode->children.begin(), rootNode->children.end(), [&](const std::unique_ptr<DataIO::Node>& child){
+                return child->name == U"Renderer" + rendererName;
+            });
+            TGUI_ASSERT(rendererNodeIt != rootNode->children.end(), "SubwidgetContainer relies on the renderer being saved already");
+        }
+
+        // Remove all renderer properties that were specified for subwidgets, as they will be saved as part of the child widget
+        for (const auto& widget : m_container->getWidgets())
+        {
+            const String& widgetName = widget->getWidgetName();
+            if (widgetName.empty())
+                continue;
+
+            auto& propertyValuePairs = (*rendererNodeIt)->propertyValuePairs;
+            auto propertyIt = propertyValuePairs.begin();
+            while (propertyIt != propertyValuePairs.end())
+            {
+                // Search for properties that either match the widget name or start with the name followed by a dot
+                if ((!propertyIt->first.starts_with(widgetName))
+                 || ((propertyIt->first.length() > widgetName.length()) && (propertyIt->first[widgetName.length()] != U'.'))
+                 || (propertyIt->first != widgetName))
+                {
+                    ++propertyIt;
+                    continue;
+                }
+
+                propertyIt = propertyValuePairs.erase(propertyIt);
+            }
+
+            auto& children = (*rendererNodeIt)->children;
+            auto childIt = children.begin();
+            while (childIt != children.end())
+            {
+                // Search for children that either match the widget name or start with the name followed by a dot
+                const auto& childName = (*childIt)->name;
+                if ((!childName.starts_with(widgetName))
+                 || ((childName.length() > widgetName.length()) && (childName[widgetName.length()] != U'.'))
+                 || (childName != widgetName))
+                {
+                    ++childIt;
+                    continue;
+                }
+
+                childIt = children.erase(childIt);
+            }
+        }
+
         node->children.emplace_back(m_container->save(renderers));
         return node;
     }
@@ -187,7 +309,10 @@ namespace tgui
 
         Widget::load(node, renderers);
         if (node->children.size() == 1)
+        {
             m_container->load(node->children[0], renderers);
+            m_container->setSize(getSize());
+        }
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -206,7 +331,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void SubwidgetContainer::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void SubwidgetContainer::draw(BackendRenderTarget& target, RenderStates states) const
     {
         m_container->draw(target, states);
     }

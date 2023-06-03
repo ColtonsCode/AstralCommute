@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,8 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Loading/DataIO.hpp>
-#include <TGUI/Loading/Deserializer.hpp>
 
 TEST_CASE("[DataIO]")
 {
@@ -75,6 +73,12 @@ TEST_CASE("[DataIO]")
         SECTION("Empty section")
         {
             std::stringstream input("name{}");
+            REQUIRE_NOTHROW(tgui::DataIO::parse(input));
+        }
+
+        SECTION("Inheritance")
+        {
+            std::stringstream input("n1 { a = 1; b = 2; n11 { c = 3; } }\nn2 : n1 { b = 20; }");
             REQUIRE_NOTHROW(tgui::DataIO::parse(input));
         }
 
@@ -202,6 +206,24 @@ TEST_CASE("[DataIO]")
         SECTION("Found empty value")
         {
             std::stringstream input("{ Property = ; ");
+            REQUIRE_THROWS_AS(tgui::DataIO::parse(input), tgui::Exception);
+        }
+
+        SECTION("Expected name of base section to inherit from after ':'")
+        {
+            std::stringstream input("name : {}");
+            REQUIRE_THROWS_AS(tgui::DataIO::parse(input), tgui::Exception);
+        }
+
+        SECTION("Failed to find base section 'subsection' to inherit from")
+        {
+            std::stringstream input("name : subsection {}");
+            REQUIRE_THROWS_AS(tgui::DataIO::parse(input), tgui::Exception);
+        }
+
+        SECTION("Expected '{' after specifying base section to inherit from")
+        {
+            std::stringstream input("subsection {}\nname : subsection and other text {}");
             REQUIRE_THROWS_AS(tgui::DataIO::parse(input), tgui::Exception);
         }
     }

@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,10 +25,18 @@
 
 #include <TGUI/Widgets/ProgressBar.hpp>
 
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cmath>
+#endif
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char ProgressBar::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     ProgressBar::ProgressBar(const char* typeName, bool initRenderer) :
@@ -44,7 +52,7 @@ namespace tgui
 
             setTextSize(getGlobalTextSize());
             setSize({m_textBack.getLineHeight() * 15,
-                     m_textBack.getLineHeight() * 1.25f + m_bordersCached.getTop() + m_bordersCached.getBottom()});
+                     std::round(m_textBack.getLineHeight() * 1.25f) + m_bordersCached.getTop() + m_bordersCached.getBottom()});
         }
     }
 
@@ -57,7 +65,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    ProgressBar::Ptr ProgressBar::copy(ProgressBar::ConstPtr progressBar)
+    ProgressBar::Ptr ProgressBar::copy(const ProgressBar::ConstPtr& progressBar)
     {
         if (progressBar)
             return std::static_pointer_cast<ProgressBar>(progressBar->clone());
@@ -88,13 +96,6 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    const ProgressBarRenderer* ProgressBar::getRenderer() const
-    {
-        return aurora::downcast<const ProgressBarRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     void ProgressBar::setSize(const Layout2d& size)
     {
         Widget::setSize(size);
@@ -107,7 +108,7 @@ namespace tgui
         recalculateFillSize();
 
         // Recalculate the text size
-        setText(getText());
+        updateTextSize();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -209,32 +210,10 @@ namespace tgui
 
     void ProgressBar::setText(const String& text)
     {
-        // Set the new text
         m_textBack.setString(text);
         m_textFront.setString(text);
 
-        // Check if the text is auto sized
-        if (m_textSize == 0)
-        {
-            unsigned int textSize;
-            if (m_spriteFill.isSet())
-                textSize = Text::findBestTextSize(m_fontCached, m_spriteFill.getSize().y * 0.8f);
-            else
-                textSize = Text::findBestTextSize(m_fontCached, getInnerSize().y * 0.8f);
-
-            m_textBack.setCharacterSize(textSize);
-
-            // Make the text smaller when it's too width
-            if (m_textBack.getSize().x > (getInnerSize().x * 0.85f))
-                m_textBack.setCharacterSize(static_cast<unsigned int>(textSize * ((getInnerSize().x * 0.85f) / m_textBack.getSize().x)));
-        }
-        else // When the text has a fixed size
-        {
-            // Set the text size
-            m_textBack.setCharacterSize(m_textSize);
-        }
-
-        m_textFront.setCharacterSize(m_textBack.getCharacterSize());
+        updateTextSize();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -242,22 +221,6 @@ namespace tgui
     const String& ProgressBar::getText() const
     {
         return m_textBack.getString();
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    void ProgressBar::setTextSize(unsigned int size)
-    {
-        // Change the text size
-        m_textSize = size;
-        setText(getText());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    unsigned int ProgressBar::getTextSize() const
-    {
-        return m_textBack.getCharacterSize();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -304,12 +267,12 @@ namespace tgui
 
     void ProgressBar::rendererChanged(const String& property)
     {
-        if (property == "Borders")
+        if (property == U"Borders")
         {
             m_bordersCached = getSharedRenderer()->getBorders();
             setSize(m_size);
         }
-        else if ((property == "TextColor") || (property == "TextColorFilled"))
+        else if ((property == U"TextColor") || (property == U"TextColorFilled"))
         {
             m_textBack.setColor(getSharedRenderer()->getTextColor());
 
@@ -318,33 +281,33 @@ namespace tgui
             else
                 m_textFront.setColor(getSharedRenderer()->getTextColor());
         }
-        else if (property == "TextureBackground")
+        else if (property == U"TextureBackground")
         {
             m_spriteBackground.setTexture(getSharedRenderer()->getTextureBackground());
         }
-        else if (property == "TextureFill")
+        else if (property == U"TextureFill")
         {
             m_spriteFill.setTexture(getSharedRenderer()->getTextureFill());
             recalculateFillSize();
         }
-        else if (property == "TextStyle")
+        else if (property == U"TextStyle")
         {
             m_textBack.setStyle(getSharedRenderer()->getTextStyle());
             m_textFront.setStyle(getSharedRenderer()->getTextStyle());
         }
-        else if (property == "BorderColor")
+        else if (property == U"BorderColor")
         {
             m_borderColorCached = getSharedRenderer()->getBorderColor();
         }
-        else if (property == "BackgroundColor")
+        else if (property == U"BackgroundColor")
         {
             m_backgroundColorCached = getSharedRenderer()->getBackgroundColor();
         }
-        else if (property == "FillColor")
+        else if (property == U"FillColor")
         {
             m_fillColorCached = getSharedRenderer()->getFillColor();
         }
-        else if ((property == "Opacity") || (property == "OpacityDisabled"))
+        else if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
             Widget::rendererChanged(property);
 
@@ -354,13 +317,13 @@ namespace tgui
             m_textBack.setOpacity(m_opacityCached);
             m_textFront.setOpacity(m_opacityCached);
         }
-        else if (property == "Font")
+        else if (property == U"Font")
         {
             Widget::rendererChanged(property);
 
             m_textBack.setFont(m_fontCached);
             m_textFront.setFont(m_fontCached);
-            setText(getText());
+            updateTextSize();
         }
         else
             Widget::rendererChanged(property);
@@ -373,22 +336,21 @@ namespace tgui
         auto node = Widget::save(renderers);
 
         if (!getText().empty())
-            node->propertyValuePairs["Text"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(getText()));
+            node->propertyValuePairs[U"Text"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(getText()));
 
         if (m_fillDirection != ProgressBar::FillDirection::LeftToRight)
         {
             if (m_fillDirection == ProgressBar::FillDirection::RightToLeft)
-                node->propertyValuePairs["FillDirection"] = std::make_unique<DataIO::ValueNode>("RightToLeft");
+                node->propertyValuePairs[U"FillDirection"] = std::make_unique<DataIO::ValueNode>("RightToLeft");
             else if (m_fillDirection == ProgressBar::FillDirection::TopToBottom)
-                node->propertyValuePairs["FillDirection"] = std::make_unique<DataIO::ValueNode>("TopToBottom");
+                node->propertyValuePairs[U"FillDirection"] = std::make_unique<DataIO::ValueNode>("TopToBottom");
             else if (m_fillDirection == ProgressBar::FillDirection::BottomToTop)
-                node->propertyValuePairs["FillDirection"] = std::make_unique<DataIO::ValueNode>("BottomToTop");
+                node->propertyValuePairs[U"FillDirection"] = std::make_unique<DataIO::ValueNode>("BottomToTop");
         }
 
-        node->propertyValuePairs["Minimum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_minimum));
-        node->propertyValuePairs["Maximum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_maximum));
-        node->propertyValuePairs["Value"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_value));
-        node->propertyValuePairs["TextSize"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_textSize));
+        node->propertyValuePairs[U"Minimum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_minimum));
+        node->propertyValuePairs[U"Maximum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_maximum));
+        node->propertyValuePairs[U"Value"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_value));
 
         return node;
     }
@@ -399,31 +361,52 @@ namespace tgui
     {
         Widget::load(node, renderers);
 
-        if (node->propertyValuePairs["Minimum"])
-            setMinimum(node->propertyValuePairs["Minimum"]->value.toInt());
-        if (node->propertyValuePairs["Maximum"])
-            setMaximum(node->propertyValuePairs["Maximum"]->value.toInt());
-        if (node->propertyValuePairs["Value"])
-            setValue(node->propertyValuePairs["Value"]->value.toInt());
-        if (node->propertyValuePairs["Text"])
-            setText(Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs["Text"]->value).getString());
-        if (node->propertyValuePairs["TextSize"])
-            setTextSize(node->propertyValuePairs["TextSize"]->value.toInt());
+        if (node->propertyValuePairs[U"Minimum"])
+            setMinimum(node->propertyValuePairs[U"Minimum"]->value.toUInt());
+        if (node->propertyValuePairs[U"Maximum"])
+            setMaximum(node->propertyValuePairs[U"Maximum"]->value.toUInt());
+        if (node->propertyValuePairs[U"Value"])
+            setValue(node->propertyValuePairs[U"Value"]->value.toUInt());
+        if (node->propertyValuePairs[U"Text"])
+            setText(Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs[U"Text"]->value).getString());
 
-        if (node->propertyValuePairs["FillDirection"])
+        if (node->propertyValuePairs[U"FillDirection"])
         {
-            String direction = node->propertyValuePairs["FillDirection"]->value.trim();
-            if (direction == "LeftToRight")
+            String direction = node->propertyValuePairs[U"FillDirection"]->value.trim();
+            if (direction == U"LeftToRight")
                 setFillDirection(ProgressBar::FillDirection::LeftToRight);
-            else if (direction == "RightToLeft")
+            else if (direction == U"RightToLeft")
                 setFillDirection(ProgressBar::FillDirection::RightToLeft);
-            else if (direction == "TopToBottom")
+            else if (direction == U"TopToBottom")
                 setFillDirection(ProgressBar::FillDirection::TopToBottom);
-            else if (direction == "BottomToTop")
+            else if (direction == U"BottomToTop")
                 setFillDirection(ProgressBar::FillDirection::BottomToTop);
             else
-                throw Exception{"Failed to parse FillDirection property, found unknown value '" + direction + "'."};
+                throw Exception{U"Failed to parse FillDirection property, found unknown value '" + direction + U"'."};
         }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void ProgressBar::updateTextSize()
+    {
+        // Check if the text is auto sized
+        if ((m_textSize == 0) && !getSharedRenderer()->getTextSize())
+        {
+            if (m_spriteFill.isSet())
+                m_textSizeCached = Text::findBestTextSize(m_fontCached, m_spriteFill.getSize().y * 0.8f);
+            else
+                m_textSizeCached = Text::findBestTextSize(m_fontCached, getInnerSize().y * 0.8f);
+
+            m_textBack.setCharacterSize(m_textSizeCached);
+
+            // Make the text smaller when it's too width
+            if (m_textBack.getSize().x > (getInnerSize().x * 0.85f))
+                m_textSizeCached = static_cast<unsigned int>(m_textSizeCached * ((getInnerSize().x * 0.85f) / m_textBack.getSize().x));
+        }
+
+        m_textBack.setCharacterSize(m_textSizeCached);
+        m_textFront.setCharacterSize(m_textSizeCached);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -508,7 +491,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ProgressBar::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void ProgressBar::draw(BackendRenderTarget& target, RenderStates states) const
     {
         // Draw the borders
         if (m_bordersCached != Borders{0})
@@ -554,7 +537,7 @@ namespace tgui
         }
 
         // Draw the text
-        if (m_textBack.getString() != "")
+        if (m_textBack.getString() != U"")
         {
             Vector2f textTranslation = (getInnerSize() - m_textBack.getSize()) / 2.f;
 
@@ -589,6 +572,13 @@ namespace tgui
                 }
             }
         }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr ProgressBar::clone() const
+    {
+        return std::make_shared<ProgressBar>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

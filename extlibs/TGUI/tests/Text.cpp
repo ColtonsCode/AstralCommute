@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,7 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Text.hpp>
 
 TEST_CASE("[Text]")
 {
@@ -86,10 +85,10 @@ TEST_CASE("[Text]")
             float width = text.getSize().x;
 
             const tgui::Font& font = text.getFont();
-            REQUIRE(text.getSize().y == 3 * font.getLineSpacing(40) + tgui::Text::calculateExtraVerticalSpace(font, 40));
+            REQUIRE(text.getSize().y == 2 * font.getLineSpacing(40) + std::max(font.getFontHeight(40), font.getLineSpacing(40)));
 
             text.setString("xy");
-            REQUIRE(text.getSize().y == 1 * font.getLineSpacing(40) + tgui::Text::calculateExtraVerticalSpace(font, 40));
+            REQUIRE(text.getSize().y == std::max(font.getFontHeight(40), font.getLineSpacing(40)));
             REQUIRE(text.getSize().x > width);
         }
 

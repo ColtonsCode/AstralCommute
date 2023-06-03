@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,22 +27,27 @@
 #define TGUI_GUI_BUILDER_FORM_HPP
 
 #include "WidgetInfo.hpp"
-#include <TGUI/TGUI.hpp>
-#include <array>
+
+#include <TGUI/Config.hpp>
+#if TGUI_BUILD_AS_CXX_MODULE
+    import tgui;
+#else
+    #include <TGUI/TGUI.hpp>
+#endif
 
 class GuiBuilder;
 
 class Form
 {
 public:
-    Form(GuiBuilder* guiBuilder, const tgui::String& filename, tgui::ChildWindow::Ptr formWindow, tgui::Vector2f formSize);
-    tgui::String addWidget(tgui::Widget::Ptr widget, tgui::Container* parent, bool selectNewWidget = true);
+    Form(GuiBuilder* guiBuilder, const tgui::String& filename, const tgui::ChildWindow::Ptr& formWindow, tgui::Vector2f formSize);
+    tgui::String addWidget(const tgui::Widget::Ptr& widget, tgui::Container* parent, bool selectNewWidget = true);
     void removeWidget(const tgui::String& id);
-    std::shared_ptr<WidgetInfo> getWidget(const tgui::String& id) const;
-    std::shared_ptr<WidgetInfo> getWidgetByName(const tgui::String& name) const;
-    std::vector<std::shared_ptr<WidgetInfo>> getWidgets() const;
-    std::shared_ptr<tgui::Group> getRootWidgetsGroup() const;
-    std::shared_ptr<WidgetInfo> getSelectedWidget() const;
+    TGUI_NODISCARD std::shared_ptr<WidgetInfo> getWidget(const tgui::String& id) const;
+    TGUI_NODISCARD std::shared_ptr<WidgetInfo> getWidgetByName(const tgui::String& name) const;
+    TGUI_NODISCARD std::vector<std::shared_ptr<WidgetInfo>> getWidgets() const;
+    TGUI_NODISCARD std::shared_ptr<tgui::Group> getRootWidgetsGroup() const;
+    TGUI_NODISCARD std::shared_ptr<WidgetInfo> getSelectedWidget() const;
     bool setSelectedWidgetName(const tgui::String& name);
     void setSelectedWidgetRenderer(const tgui::String& renderer);
     void updateSelectionSquarePositions();
@@ -51,28 +56,30 @@ public:
     void selectParent();
     void mouseMoved(tgui::Vector2i pos);
     void mouseReleased();
-    bool rightMouseClick(tgui::Vector2i pos);
+    TGUI_NODISCARD bool rightMouseClick(tgui::Vector2i pos);
     void arrowKeyPressed(const tgui::Event::KeyEvent& keyEvent);
     void setFilename(const tgui::String& filename);
-    tgui::String getFilename() const;
+    TGUI_NODISCARD tgui::String getFilename() const;
     void setSize(tgui::Vector2f size);
-    tgui::Vector2f getSize() const;
+    TGUI_NODISCARD tgui::Vector2f getSize() const;
     void setChanged(bool changed);
-    bool isChanged() const;
+    TGUI_NODISCARD bool isChanged() const;
     void focus();
-    bool hasFocus() const;
+    TGUI_NODISCARD bool hasFocus() const;
     void load();
     void save();
+    TGUI_NODISCARD std::stringstream saveState();
+    void loadState(std::stringstream& state);
     void updateAlignmentLines();
 
 private:
-    void importLoadedWidgets(tgui::Container::Ptr parent);
-    void onSelectionSquarePress(tgui::Button::Ptr square, tgui::Vector2f pos);
-    tgui::Widget::Ptr getWidgetBelowMouse(tgui::Container::Ptr parent, tgui::Vector2f pos);
+    void importLoadedWidgets(const tgui::Container::Ptr& parent);
+    void onSelectionSquarePress(const tgui::Button::Ptr& square, tgui::Vector2f pos);
+    TGUI_NODISCARD tgui::Widget::Ptr getWidgetBelowMouse(const tgui::Container::Ptr& parent, tgui::Vector2f pos);
     void onFormMousePress(tgui::Vector2f pos);
     void onDrag(tgui::Vector2i mousePos);
-    void selectWidget(std::shared_ptr<WidgetInfo> widget);
-    std::vector<std::pair<tgui::Vector2f, tgui::Vector2f>> getAlignmentLines() const;
+    void selectWidget(const std::shared_ptr<WidgetInfo>& widget);
+    TGUI_NODISCARD std::vector<std::pair<tgui::Vector2f, tgui::Vector2f>> getAlignmentLines() const;
 
 private:
 
@@ -86,6 +93,7 @@ private:
     std::map<tgui::String, std::shared_ptr<WidgetInfo>> m_widgets;
     bool m_changed = false;
     bool m_draggingWidget = false;
+    bool m_onDragSaved = false;
     tgui::Button::Ptr m_draggingSelectionSquare;
     tgui::Vector2f m_draggingPos;
     tgui::String m_filename;

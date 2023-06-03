@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,13 +27,12 @@
 #define TGUI_GUI_BUILDER_TREE_VIEW_PROPERTIES_HPP
 
 #include "WidgetProperties.hpp"
-#include <TGUI/Widgets/TreeView.hpp>
 
 struct TreeViewProperties : WidgetProperties
 {
     // TODO: Scrollbar renderer
 
-    void updateProperty(tgui::Widget::Ptr widget, const tgui::String& property, const tgui::String& value) const override
+    void updateProperty(const tgui::Widget::Ptr& widget, const tgui::String& property, const tgui::String& value) const override
     {
         auto treeView = widget->cast<tgui::TreeView>();
         if (property == "TextSize")
@@ -44,7 +43,7 @@ struct TreeViewProperties : WidgetProperties
             WidgetProperties::updateProperty(widget, property, value);
     }
 
-    PropertyValueMapPair initProperties(tgui::Widget::Ptr widget) const override
+    TGUI_NODISCARD PropertyValueMapPair initProperties(const tgui::Widget::Ptr& widget) const override
     {
         auto pair = WidgetProperties::initProperties(widget);
         auto treeView = widget->cast<tgui::TreeView>();
@@ -63,6 +62,7 @@ struct TreeViewProperties : WidgetProperties
         pair.second["SelectedTextColor"] = {"Color", tgui::Serializer::serialize(renderer->getSelectedTextColor())};
         pair.second["SelectedTextColorHover"] = {"Color", tgui::Serializer::serialize(renderer->getSelectedTextColorHover())};
         pair.second["BorderColor"] = {"Color", tgui::Serializer::serialize(renderer->getBorderColor())};
+        pair.second["TextureBackground"] = {"Texture", tgui::Serializer::serialize(renderer->getTextureBackground())};
         pair.second["TextureBranchExpanded"] = {"Texture", tgui::Serializer::serialize(renderer->getTextureBranchExpanded())};
         pair.second["TextureBranchCollapsed"] = {"Texture", tgui::Serializer::serialize(renderer->getTextureBranchCollapsed())};
         pair.second["TextureLeaf"] = {"Texture", tgui::Serializer::serialize(renderer->getTextureLeaf())};

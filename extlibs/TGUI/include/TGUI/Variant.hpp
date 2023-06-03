@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,7 +27,11 @@
 #define TGUI_VARIANT_HPP
 
 #if TGUI_COMPILED_WITH_CPP_VER >= 17
-    #include <variant>
+    #if TGUI_EXPERIMENTAL_USE_STD_MODULE
+        import std;
+    #else
+        #include <variant>
+    #endif
 #else
     #include <TGUI/Any.hpp>
     #include <TGUI/Exception.hpp>
@@ -35,7 +39,7 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
 /*
 #if TGUI_COMPILED_WITH_CPP_VER < 17
@@ -47,12 +51,12 @@ namespace tgui
             static std::size_t findIndex(const Any&, std::size_t)
             {
                 // We should never pass here, it means that the Any object didn't hold anything.
-                throw tgui::Exception("tgui::Variant::index() called on uninitialized variant!");
+                throw Exception("tgui::Variant::index() called on uninitialized variant!");
             }
 
             static int getByIndex(const Any& any, std::size_t wantedIndex, std::size_t index)
             {
-                throw tgui::Exception("tgui::Variant::get() called with too high index!");
+                throw Exception("tgui::Variant::get() called with too high index!");
             }
         };
 
@@ -111,11 +115,11 @@ namespace tgui
         /// @param value  Value to store in the variant
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         template <typename T>
-        Variant(const T& value) :
+        Variant(T&& value) : // NOLINT(bugprone-forwarding-reference-overload)
 #if TGUI_COMPILED_WITH_CPP_VER >= 17
-            m_variant{value}
+            m_variant{std::forward<T>(value)}
 #else
-            m_any{value}
+            m_any{std::forward<T>(value)}
 #endif
         {
         }
@@ -127,7 +131,7 @@ namespace tgui
         /// @return Stored value
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         template <typename T>
-        T& get()
+        TGUI_NODISCARD T& get()
         {
 #if TGUI_COMPILED_WITH_CPP_VER >= 17
             return std::get<T>(m_variant);
@@ -143,7 +147,7 @@ namespace tgui
         /// @return Stored value
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         template <typename T>
-        const T& get() const
+        TGUI_NODISCARD const T& get() const
         {
 #if TGUI_COMPILED_WITH_CPP_VER >= 17
             return std::get<T>(m_variant);

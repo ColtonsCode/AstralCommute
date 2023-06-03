@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,7 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Widgets/BitmapButton.hpp>
 
 TEST_CASE("[BitmapButton]")
 {
@@ -33,7 +32,7 @@ TEST_CASE("[BitmapButton]")
     SECTION("Signals")
     {
         button->onPress([](){});
-        button->onPress([](tgui::String){});
+        button->onPress([](const tgui::String&){});
     }
 
     SECTION("WidgetType")
@@ -297,7 +296,7 @@ TEST_CASE("[BitmapButton]")
         button->setImage("resources/image.png");
         button->setImageScaling(0.8f);
 
-        testSavingWidget("BitmapButton", button, false);
+        testSavingWidget("BitmapButton", button);
     }
 
     SECTION("Draw")

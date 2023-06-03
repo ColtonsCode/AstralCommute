@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -29,10 +29,14 @@
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char RadioButtonGroup::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     RadioButtonGroup::RadioButtonGroup(const char* typeName, bool initRenderer) :
-        Group{typeName, initRenderer}
+        Container{typeName, initRenderer}
     {
         setSize({"100%", "100%"});
     }
@@ -46,7 +50,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    RadioButtonGroup::Ptr RadioButtonGroup::copy(RadioButtonGroup::ConstPtr group)
+    RadioButtonGroup::Ptr RadioButtonGroup::copy(const RadioButtonGroup::ConstPtr& group)
     {
         if (group)
             return std::static_pointer_cast<RadioButtonGroup>(group->clone());
@@ -61,7 +65,7 @@ namespace tgui
         // Loop through all radio buttons and uncheck them
         for (auto& widget : m_widgets)
         {
-            if (widget->getWidgetType() == "RadioButton")
+            if (widget->getWidgetType() == U"RadioButton")
                 std::static_pointer_cast<RadioButton>(widget)->setChecked(false);
         }
     }
@@ -72,10 +76,10 @@ namespace tgui
     {
         for (const auto& widget : m_widgets)
         {
-            if (widget->getWidgetType() != "RadioButton")
+            if (widget->getWidgetType() != U"RadioButton")
                 continue;
 
-            tgui::RadioButton::Ptr radioButton = std::static_pointer_cast<RadioButton>(widget);
+            RadioButton::Ptr radioButton = std::static_pointer_cast<RadioButton>(widget);
             if (radioButton->isChecked())
                 return radioButton;
         }
@@ -85,10 +89,28 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void RadioButtonGroup::draw(BackendRenderTargetBase& target, RenderStates states) const
+    bool RadioButtonGroup::isMouseOnWidget(Vector2f pos) const
     {
-        // Note that it calls the function from Container, not Group!
-        Container::draw(target, states);
+        pos -= getPosition();
+
+        if (!FloatRect{0, 0, getSize().x, getSize().y}.contains(pos))
+            return false;
+
+        const Vector2f offset = getChildWidgetsOffset();
+        for (const auto& widget : m_widgets)
+        {
+            if (widget->isVisible() && widget->isMouseOnWidget(transformMousePos(widget, pos - offset)))
+                return true;
+        }
+
+        return false;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr RadioButtonGroup::clone() const
+    {
+        return std::make_shared<RadioButtonGroup>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

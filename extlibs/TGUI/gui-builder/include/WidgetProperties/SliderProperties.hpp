@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,11 +27,10 @@
 #define TGUI_GUI_BUILDER_SLIDER_PROPERTIES_HPP
 
 #include "WidgetProperties.hpp"
-#include <TGUI/Widgets/Slider.hpp>
 
 struct SliderProperties : WidgetProperties
 {
-    void updateProperty(tgui::Widget::Ptr widget, const tgui::String& property, const tgui::String& value) const override
+    void updateProperty(const tgui::Widget::Ptr& widget, const tgui::String& property, const tgui::String& value) const override
     {
         auto slider = widget->cast<tgui::Slider>();
         if (property == "Minimum")
@@ -50,7 +49,7 @@ struct SliderProperties : WidgetProperties
             WidgetProperties::updateProperty(widget, property, value);
     }
 
-    PropertyValueMapPair initProperties(tgui::Widget::Ptr widget) const override
+    TGUI_NODISCARD PropertyValueMapPair initProperties(const tgui::Widget::Ptr& widget) const override
     {
         auto pair = WidgetProperties::initProperties(widget);
         auto slider = widget->cast<tgui::Slider>();
@@ -58,8 +57,8 @@ struct SliderProperties : WidgetProperties
         pair.first["Maximum"] = {"Float", tgui::String::fromNumber(slider->getMaximum())};
         pair.first["Value"] = {"Float", tgui::String::fromNumber(slider->getValue())};
         pair.first["Step"] = {"Float", tgui::String::fromNumber(slider->getStep())};
-        pair.first["InvertedDirection"] = {"Bool", tgui::String::fromNumber(slider->getInvertedDirection())};
-        pair.first["VerticalScroll"] = {"Bool", tgui::String::fromNumber(slider->getVerticalScroll())};
+        pair.first["InvertedDirection"] = {"Bool", tgui::Serializer::serialize(slider->getInvertedDirection())};
+        pair.first["VerticalScroll"] = {"Bool", tgui::Serializer::serialize(slider->getVerticalScroll())};
 
         const auto renderer = slider->getSharedRenderer();
         pair.second["Borders"] = {"Outline", tgui::Serializer::serialize(renderer->getBorders())};

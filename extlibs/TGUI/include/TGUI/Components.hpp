@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -31,15 +31,17 @@
 #include <TGUI/Texture.hpp>
 #include <TGUI/Outline.hpp>
 
-#include <unordered_map>
-#include <memory>
-#include <set>
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <unordered_map>
+    #include <memory>
+    #include <set>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace tgui
 {
-    class BackendRenderTargetBase;
+    class BackendRenderTarget;
 
 namespace priv
 {
@@ -100,11 +102,11 @@ namespace dev
     {
     public:
 
-        static std::uint64_t createTopic();
+        TGUI_NODISCARD static std::uint64_t createTopic();
 
         static void destroyTopic(std::uint64_t topicId);
 
-        static std::uint64_t subscribe(std::uint64_t topicId, std::function<void()> func);
+        TGUI_NODISCARD static std::uint64_t subscribe(std::uint64_t topicId, std::function<void()> func);
 
         static void unsubscribe(std::uint64_t callbackId);
 
@@ -136,21 +138,18 @@ namespace dev
 
         StyleProperty() :
             m_defaultValue  {},
-            m_propertyData  {0},
             m_messageTopicId{MessageBroker::createTopic()}
         {
         }
 
-        explicit StyleProperty(const ValueType& defaultValue) :
-            m_defaultValue  {defaultValue},
-            m_propertyData  {0},
+        explicit StyleProperty(ValueType defaultValue) :
+            m_defaultValue  {std::move(defaultValue)},
             m_messageTopicId{MessageBroker::createTopic()}
         {
         }
 
         StyleProperty(const StyleProperty& other) :
             m_defaultValue  {other.m_defaultValue},
-            m_propertyData  {0},
             m_messageTopicId{MessageBroker::createTopic()},
             m_globalValues  {other.m_globalValues}
         {
@@ -167,7 +166,7 @@ namespace dev
                 if (oldStoredStates & (1 << bitIndex))
                 {
                     m_globalValues[baseIndex + bitIndex] = m_globalValues[oldBaseIndex + bitIndex];
-                    total += (1 << bitIndex);
+                    total += static_cast<std::uint16_t>(1 << bitIndex);
                 }
                 ++bitIndex;
             }
@@ -175,7 +174,7 @@ namespace dev
             m_propertyData = baseIndex | oldStoredStates;
         }
 
-        StyleProperty(StyleProperty&& other) :
+        StyleProperty(StyleProperty&& other) noexcept :
             m_defaultValue  {std::move(other.m_defaultValue)},
             m_propertyData  {std::move(other.m_propertyData)},
             m_messageTopicId{std::move(other.m_messageTopicId)},
@@ -184,7 +183,7 @@ namespace dev
             other.m_messageTopicId = 0;
         }
 
-        ~StyleProperty()
+        ~StyleProperty() override
         {
             if (m_messageTopicId) // Can be 0 on moved object
                 MessageBroker::destroyTopic(m_messageTopicId);
@@ -205,7 +204,7 @@ namespace dev
             return *this;
         }
 
-        StyleProperty& operator=(StyleProperty&& other)
+        StyleProperty& operator=(StyleProperty&& other) noexcept
         {
             if (&other != this)
             {
@@ -239,7 +238,7 @@ namespace dev
         void unsetValue(ComponentState state)
         {
             const std::uint64_t baseIndex = m_propertyData & 0xFFFFFFFFFFFF0000;
-            m_propertyData &= ~(1 << static_cast<std::uint8_t>(state));
+            m_propertyData &= ~(static_cast<std::uint64_t>(1) << static_cast<std::uint8_t>(state));
             m_globalValues.erase(baseIndex + static_cast<std::uint8_t>(state));
 
             MessageBroker::sendEvent(m_messageTopicId);
@@ -251,7 +250,7 @@ namespace dev
             MessageBroker::sendEvent(m_messageTopicId);
         }
 
-        const ValueType& getValue(ComponentState state = ComponentState::Normal) const
+        TGUI_NODISCARD const ValueType& getValue(ComponentState state = ComponentState::Normal) const
         {
             const std::uint64_t baseIndex = m_propertyData & 0xFFFFFFFFFFFF0000;
             const std::uint16_t storedStates = static_cast<std::uint16_t>(m_propertyData & 0xFFFF);
@@ -316,7 +315,7 @@ namespace dev
             }
         }
 
-        std::uint64_t connectCallback(std::function<void()> func)
+        TGUI_NODISCARD std::uint64_t connectCallback(std::function<void()> func)
         {
             return MessageBroker::subscribe(m_messageTopicId, std::move(func));
         }
@@ -340,7 +339,7 @@ namespace dev
                 if (storedStates & (1 << bitIndex))
                 {
                     m_globalValues.erase(baseIndex + bitIndex);
-                    total += (1 << bitIndex);
+                    total += static_cast<std::uint16_t>(1 << bitIndex);
                 }
                 ++bitIndex;
             }
@@ -399,6 +398,9 @@ namespace dev
     {
     public:
 
+        Component() = default;
+        virtual ~Component() = default;
+
         Component(const Component&);
         Component& operator=(const Component&);
 
@@ -407,29 +409,25 @@ namespace dev
 
         void setPosition(Vector2f position);
 
-        Vector2f getPosition() const;
+        TGUI_NODISCARD Vector2f getPosition() const;
 
-        Vector2f getSize() const;
+        TGUI_NODISCARD Vector2f getSize() const;
 
         void setPositionAlignment(PositionAlignment alignment);
 
         void setVisible(bool visible);
 
-        bool isVisible() const;
+        TGUI_NODISCARD bool isVisible() const;
 
         void setParent(GroupComponent* parent);
 
-        virtual void draw(BackendRenderTargetBase& target, RenderStates states) const = 0;
+        virtual void draw(BackendRenderTarget& target, RenderStates states) const = 0;
 
         virtual void updateLayout();
 
-        virtual std::shared_ptr<Component> clone() const = 0;
+        TGUI_NODISCARD virtual std::shared_ptr<Component> clone() const = 0;
 
     protected:
-
-        Component() = default;
-
-        virtual ~Component() = default;
 
         friend void swap(Component& first, Component& second);
 
@@ -454,17 +452,17 @@ namespace dev
         GroupComponent(GroupComponent&&) = default;
         GroupComponent& operator=(GroupComponent&&) = default;
 
-        Vector2f getClientSize() const;
+        TGUI_NODISCARD Vector2f getClientSize() const;
 
         void addComponent(const std::shared_ptr<Component>& component);
 
-        const std::vector<std::shared_ptr<Component>>& getComponents() const;
+        TGUI_NODISCARD const std::vector<std::shared_ptr<Component>>& getComponents() const;
 
-        void draw(BackendRenderTargetBase& target, RenderStates states) const override;
+        void draw(BackendRenderTarget& target, RenderStates states) const override;
 
         void updateLayout() override;
 
-        std::shared_ptr<Component> clone() const override;
+        TGUI_NODISCARD std::shared_ptr<Component> clone() const override;
 
         friend void swap(GroupComponent& first, GroupComponent& second);
 
@@ -485,7 +483,7 @@ namespace dev
 
         BackgroundComponent(StylePropertyBackground* backgroundStyle);
 
-        ~BackgroundComponent();
+        ~BackgroundComponent() override;
 
         BackgroundComponent(const BackgroundComponent& other, StylePropertyBackground* backgroundStyle = nullptr);
         BackgroundComponent& operator=(const BackgroundComponent& other);
@@ -496,25 +494,25 @@ namespace dev
 
         void setBorders(const Outline& border);
 
-        const Outline& getBorders() const;
+        TGUI_NODISCARD const Outline& getBorders() const;
 
         void setPadding(const Outline& padding);
 
-        const Outline& getPadding() const;
+        TGUI_NODISCARD const Outline& getPadding() const;
 
         void setOpacity(float opacity);
 
         void setComponentState(ComponentState state);
 
-        bool isTransparentPixel(Vector2f pos, bool transparentTexture) const;
+        TGUI_NODISCARD bool isTransparentPixel(Vector2f pos, bool transparentTexture) const;
 
-        void draw(BackendRenderTargetBase& target, RenderStates states) const override;
+        void draw(BackendRenderTarget& target, RenderStates states) const override;
 
-        Vector2f getSizeWithoutBorders() const;
+        TGUI_NODISCARD Vector2f getSizeWithoutBorders() const;
 
         void updateLayout() override;
 
-        std::shared_ptr<Component> clone() const override;
+        TGUI_NODISCARD std::shared_ptr<Component> clone() const override;
 
     private:
 
@@ -547,7 +545,7 @@ namespace dev
 
         TextComponent(StylePropertyText* textStyle);
 
-        ~TextComponent();
+        ~TextComponent() override;
 
         TextComponent(const TextComponent& other, StylePropertyText* textStyle = nullptr);
         TextComponent& operator=(const TextComponent& other);
@@ -556,25 +554,25 @@ namespace dev
 
         void setString(const String& caption);
 
-        const String& getString() const;
+        TGUI_NODISCARD const String& getString() const;
 
         void setCharacterSize(unsigned int size);
 
-        unsigned int getCharacterSize() const;
+        TGUI_NODISCARD unsigned int getCharacterSize() const;
 
-        void setFont(Font font);
+        void setFont(const Font& font);
 
-        Font getFont() const;
+        TGUI_NODISCARD Font getFont() const;
 
         void setOutlineColor(Color color);
 
-        Color getOutlineColor() const;
+        TGUI_NODISCARD Color getOutlineColor() const;
 
         void setOutlineThickness(float thickness);
 
-        float getOutlineThickness() const;
+        TGUI_NODISCARD float getOutlineThickness() const;
 
-        float getLineHeight() const;
+        TGUI_NODISCARD float getLineHeight() const;
 
         void setOpacity(float opacity);
 
@@ -582,9 +580,9 @@ namespace dev
 
         void setComponentState(ComponentState state);
 
-        void draw(BackendRenderTargetBase& target, RenderStates states) const override;
+        void draw(BackendRenderTarget& target, RenderStates states) const override;
 
-        std::shared_ptr<Component> clone() const override;
+        TGUI_NODISCARD std::shared_ptr<Component> clone() const override;
 
     private:
         Text m_text;
@@ -605,7 +603,7 @@ namespace dev
 
         ImageComponent(StyleProperty<Texture>* textureStyle);
 
-        ~ImageComponent();
+        ~ImageComponent() override;
 
         ImageComponent(const ImageComponent& other, StyleProperty<Texture>* textureStyle = nullptr);
         ImageComponent& operator=(const ImageComponent& other);
@@ -618,11 +616,11 @@ namespace dev
 
         void setComponentState(ComponentState state);
 
-        bool isTransparentPixel(Vector2f pos, bool transparentTexture) const;
+        TGUI_NODISCARD bool isTransparentPixel(Vector2f pos, bool transparentTexture) const;
 
-        void draw(BackendRenderTargetBase& target, RenderStates states) const override;
+        void draw(BackendRenderTarget& target, RenderStates states) const override;
 
-        std::shared_ptr<Component> clone() const override;
+        TGUI_NODISCARD std::shared_ptr<Component> clone() const override;
 
     private:
 
@@ -634,7 +632,7 @@ namespace dev
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    inline ComponentState getStateFromFlags(bool hover, bool active, bool focused = false, bool enabled = true)
+    TGUI_NODISCARD inline ComponentState getStateFromFlags(bool hover, bool active, bool focused = false, bool enabled = true)
     {
         if (!enabled)
         {

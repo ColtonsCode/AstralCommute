@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,8 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Widgets/HorizontalLayout.hpp>
-#include <TGUI/Widgets/Button.hpp>
 
 TEST_CASE("[HorizontalLayout]")
 {
@@ -142,6 +140,7 @@ TEST_CASE("[HorizontalLayout]")
 
     SECTION("Saving and loading from file")
     {
+        std::shared_ptr<tgui::RendererData> oldButtonRenderer = tgui::Theme::getDefault()->getRendererNoThrow("Button");
         tgui::Theme::getDefault()->addRenderer("Button", std::make_shared<tgui::RendererData>());
 
         layout->add(tgui::Button::create("Hello"));
@@ -149,5 +148,8 @@ TEST_CASE("[HorizontalLayout]")
         layout->add(tgui::Button::create("Hi"), 3, "Button2");
 
         testSavingWidget("HorizontalLayout", layout, false);
+
+        // Restore the default theme which is also accessed by other tests
+        tgui::Theme::getDefault()->addRenderer("Button", oldButtonRenderer);
     }
 }

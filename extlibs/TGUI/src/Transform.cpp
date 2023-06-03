@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -24,8 +24,15 @@
 
 
 #include <TGUI/Transform.hpp>
-#include <algorithm>
-#include <cmath>
+
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <algorithm>
+    #include <cmath>
+
+    #if defined(__cpp_lib_math_constants) && (__cpp_lib_math_constants >= 201907L)
+        #include <numbers>
+    #endif
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -52,14 +59,14 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Transform::Transform(const float matrix[16])
+    Transform::Transform(const std::array<float, 16>& matrix) :
+        m_matrix(matrix)
     {
-        std::copy(&matrix[0], &matrix[16], m_matrix);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    const float* Transform::getMatrix() const
+    const std::array<float, 16>& Transform::getMatrix() const
     {
         return m_matrix;
     }
@@ -76,26 +83,26 @@ namespace tgui
         // Compute the inverse if the determinant is not zero (don't use an epsilon because the determinant may *really* be tiny)
         if (det != 0.f)
         {
-            return Transform( (m_matrix[15] * m_matrix[5] - m_matrix[7] * m_matrix[13]) / det,
-                             -(m_matrix[15] * m_matrix[4] - m_matrix[7] * m_matrix[12]) / det,
-                              (m_matrix[13] * m_matrix[4] - m_matrix[5] * m_matrix[12]) / det,
-                             -(m_matrix[15] * m_matrix[1] - m_matrix[3] * m_matrix[13]) / det,
-                              (m_matrix[15] * m_matrix[0] - m_matrix[3] * m_matrix[12]) / det,
-                             -(m_matrix[13] * m_matrix[0] - m_matrix[1] * m_matrix[12]) / det,
-                              (m_matrix[7]  * m_matrix[1] - m_matrix[3] * m_matrix[5])  / det,
-                             -(m_matrix[7]  * m_matrix[0] - m_matrix[3] * m_matrix[4])  / det,
-                              (m_matrix[5]  * m_matrix[0] - m_matrix[1] * m_matrix[4])  / det);
+            return { (m_matrix[15] * m_matrix[5] - m_matrix[7] * m_matrix[13]) / det,
+                    -(m_matrix[15] * m_matrix[4] - m_matrix[7] * m_matrix[12]) / det,
+                     (m_matrix[13] * m_matrix[4] - m_matrix[5] * m_matrix[12]) / det,
+                    -(m_matrix[15] * m_matrix[1] - m_matrix[3] * m_matrix[13]) / det,
+                     (m_matrix[15] * m_matrix[0] - m_matrix[3] * m_matrix[12]) / det,
+                    -(m_matrix[13] * m_matrix[0] - m_matrix[1] * m_matrix[12]) / det,
+                     (m_matrix[7]  * m_matrix[1] - m_matrix[3] * m_matrix[5])  / det,
+                    -(m_matrix[7]  * m_matrix[0] - m_matrix[3] * m_matrix[4])  / det,
+                     (m_matrix[5]  * m_matrix[0] - m_matrix[1] * m_matrix[4])  / det};
         }
         else
-            return Transform();
+            return {};
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     Vector2f Transform::transformPoint(const Vector2f& point) const
     {
-        return Vector2f(m_matrix[0] * point.x + m_matrix[4] * point.y + m_matrix[12],
-                        m_matrix[1] * point.x + m_matrix[5] * point.y + m_matrix[13]);
+        return {m_matrix[0] * point.x + m_matrix[4] * point.y + m_matrix[12],
+                m_matrix[1] * point.x + m_matrix[5] * point.y + m_matrix[13]};
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -117,15 +124,15 @@ namespace tgui
         const float top = std::min({points[0].y, points[1].y, points[2].y, points[3].y});
         const float bottom = std::max({points[0].y, points[1].y, points[2].y, points[3].y});
 
-        return FloatRect(left, top, right - left, bottom - top);
+        return {left, top, right - left, bottom - top};
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     Transform& Transform::combine(const Transform& other)
     {
-        const float* a = m_matrix;
-        const float* b = other.m_matrix;
+        const auto& a = m_matrix;
+        const auto& b = other.m_matrix;
 
         *this = Transform(a[0] * b[0]  + a[4] * b[1]  + a[12] * b[3],
                           a[0] * b[4]  + a[4] * b[5]  + a[12] * b[7],
@@ -152,7 +159,12 @@ namespace tgui
 
     Transform& Transform::rotate(float angle, const Vector2f& center)
     {
-        const float rad = angle * 3.141592654f / 180.f;
+#if defined(__cpp_lib_math_constants) && (__cpp_lib_math_constants >= 201907L)
+    const float pi = std::numbers::pi_v<float>;
+#else
+    const float pi = 3.14159265359f;
+#endif
+        const float rad = angle * pi / 180.f;
         const float cos = std::cos(rad);
         const float sin = std::sin(rad);
         return combine({cos, -sin, center.x * (1 - cos) + center.y * sin,
@@ -192,10 +204,10 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Transform::roundPosition()
+    void Transform::roundPosition(float pixelScaleX, float pixelScaleY)
     {
-        m_matrix[12] = std::round(m_matrix[12]);
-        m_matrix[13] = std::round(m_matrix[13]);
+        m_matrix[12] = std::round(m_matrix[12] * pixelScaleX) / pixelScaleX;
+        m_matrix[13] = std::round(m_matrix[13] * pixelScaleY) / pixelScaleY;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

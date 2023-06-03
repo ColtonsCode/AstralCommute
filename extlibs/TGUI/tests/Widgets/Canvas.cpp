@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -22,9 +22,23 @@
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#if TGUI_HAS_BACKEND_SFML
+#include <TGUI/Config.hpp>
+#if TGUI_HAS_RENDERER_BACKEND_SFML_GRAPHICS
+    #include <SFML/Graphics/View.hpp>
+    #include <SFML/Graphics/Sprite.hpp>
+#endif
 
-#include <SFML/Graphics/View.hpp>
+#include "Tests.hpp"
+
+#if TGUI_HAS_RENDERER_BACKEND_SFML_GRAPHICS
+
+#if TGUI_BUILD_AS_CXX_MODULE
+    import tgui.backend.renderer.sfml_graphics;
+#else
+    #include <TGUI/Backend/Renderer/SFML-Graphics/CanvasSFML.hpp>
+    #include <TGUI/Backend/Renderer/SFML-Graphics/BackendRendererSFML.hpp>
+#endif
+
 namespace sf  // Anonymous namespace didn't work for Clang on macOS
 {
     bool operator==(const sf::View& left, const sf::View& right)
@@ -36,99 +50,230 @@ namespace sf  // Anonymous namespace didn't work for Clang on macOS
     }
 }
 
-#include "Tests.hpp"
-#include <TGUI/Widgets/Canvas.hpp>
-
-TEST_CASE("[Canvas]")
+TEST_CASE("[CanvasSFML]")
 {
-    tgui::Canvas::Ptr canvas = tgui::Canvas::create();
-    canvas->getRenderer()->setFont("resources/DejaVuSans.ttf");
-
-    SECTION("WidgetType")
+    if (std::dynamic_pointer_cast<tgui::BackendRendererSFML>(tgui::getBackend()->getRenderer()))
     {
-        REQUIRE(canvas->getWidgetType() == "Canvas");
-    }
+        tgui::CanvasSFML::Ptr canvas = tgui::CanvasSFML::create();
+        canvas->getRenderer()->setFont("resources/DejaVuSans.ttf");
 
-    SECTION("constructor")
-    {
-        canvas = tgui::Canvas::create({200, 100});
-        REQUIRE(canvas->getSize() == tgui::Vector2f(200, 100));
-    }
+        SECTION("WidgetType")
+        {
+            REQUIRE(canvas->getWidgetType() == "CanvasSFML");
+        }
 
-    SECTION("view")
-    {
-        canvas = tgui::Canvas::create({200, 100});
+        SECTION("constructor")
+        {
+            canvas = tgui::CanvasSFML::create({200, 100});
+            REQUIRE(canvas->getSize() == tgui::Vector2f(200, 100));
+        }
 
-        REQUIRE(canvas->getView() == sf::View({0, 0, 200, 100}));
-        REQUIRE(canvas->getDefaultView() == sf::View({0, 0, 200, 100}));
+        SECTION("view")
+        {
+            canvas = tgui::CanvasSFML::create({200, 100});
 
-        canvas->setView(sf::View({20, 10, 100, 50}));
-        REQUIRE(canvas->getView() == sf::View({20, 10, 100, 50}));
-        REQUIRE(canvas->getDefaultView() == sf::View({0, 0, 200, 100}));
+            REQUIRE(canvas->getView() == sf::View(sf::FloatRect{{0, 0}, {200, 100}}));
+            REQUIRE(canvas->getDefaultView() == sf::View(sf::FloatRect{{0, 0}, {200, 100}}));
 
-        REQUIRE(canvas->getViewport() == tgui::IntRect(0, 0, 200, 100));
+            canvas->setView(sf::View(sf::FloatRect{{20, 10}, {100, 50}}));
+            REQUIRE(canvas->getView() == sf::View(sf::FloatRect{{20, 10}, {100, 50}}));
+            REQUIRE(canvas->getDefaultView() == sf::View(sf::FloatRect{{0, 0}, {200, 100}}));
 
-        sf::View view({20, 10, 100, 50});
-        view.setViewport({0.1f, 0.2f, 0.5f, 0.6f});
-        canvas->setView(view);
-        REQUIRE(canvas->getViewport() == tgui::IntRect(20, 20, 100, 60));
-    }
+            REQUIRE(canvas->getViewport() == tgui::IntRect(0, 0, 200, 100));
 
-    SECTION("internal render texture")
-    {
-        canvas = tgui::Canvas::create({50, 50});
-        sf::RenderTexture *internalRenderTexture = &canvas->getRenderTexture();
+            sf::View view(sf::FloatRect{{20, 10}, {100, 50}});
+            view.setViewport({{0.1f, 0.2f}, {0.5f, 0.6f}});
+            canvas->setView(view);
+            REQUIRE(canvas->getViewport() == tgui::IntRect(20, 20, 100, 60));
+        }
 
-        canvas->setSize({70, 80});
-        canvas->setView(sf::View({20, 10, 100, 50}));
-        canvas->setPosition({10, 5});
+        SECTION("internal render texture")
+        {
+            canvas = tgui::CanvasSFML::create({50, 50});
+            sf::RenderTexture *internalRenderTexture = &canvas->getRenderTexture();
 
-        // The address of the internal render texture never changes
-        REQUIRE(internalRenderTexture == &canvas->getRenderTexture());
-    }
+            canvas->setSize({70, 80});
+            canvas->setView(sf::View(sf::FloatRect{{20, 10}, {100, 50}}));
+            canvas->setPosition({10, 5});
 
-    testWidgetRenderer(canvas->getRenderer());
+            // The address of the internal render texture never changes
+            REQUIRE(internalRenderTexture == &canvas->getRenderTexture());
+        }
 
-    SECTION("Saving and loading from file")
-    {
-        REQUIRE_NOTHROW(canvas = tgui::Canvas::create({60, 40}));
+        testWidgetRenderer(canvas->getRenderer());
 
-        testSavingWidget("Canvas", canvas, false);
-    }
+        SECTION("Saving and loading from file")
+        {
+            REQUIRE_NOTHROW(canvas = tgui::CanvasSFML::create({60, 40}));
 
-    SECTION("Draw")
-    {
-        TEST_DRAW_INIT(200, 150, canvas)
+            testSavingWidget("CanvasSFML", canvas, false);
+        }
 
-        tgui::WidgetRenderer renderer = tgui::RendererData::create();
-        renderer.setOpacity(0.7f);
-        canvas->setRenderer(renderer.getData());
+        SECTION("Draw")
+        {
+            TEST_DRAW_INIT(200, 150, canvas)
 
-        canvas->setSize({180, 140});
-        canvas->setPosition({10, 5});
+            tgui::WidgetRenderer renderer = tgui::RendererData::create();
+            renderer.setOpacity(0.7f);
+            canvas->setRenderer(renderer.getData());
 
-        sf::Texture texture;
-        texture.loadFromFile("resources/image.png");
+            canvas->setSize({180, 140});
+            canvas->setPosition({10, 5});
 
-        sf::Sprite sprite;
-        sprite.setTexture(texture);
-        sprite.setScale({150.f / texture.getSize().x, 100.f / texture.getSize().y});
-        sprite.setPosition({15, 20});
+            sf::Texture texture;
+            REQUIRE(texture.loadFromFile("resources/image.png"));
 
-        std::vector<sf::Vertex> vertices = {
-                {{80, 90}, tgui::Color::Red},
-                {{80, 115}, tgui::Color::Red},
-                {{100, 90}, tgui::Color::Red},
-                {{100, 115}, tgui::Color::Red}
-            };
+            sf::Sprite sprite(texture);
+            sprite.setScale({150.f / texture.getSize().x, 100.f / texture.getSize().y});
+            sprite.setPosition({15, 20});
 
-        canvas->clear(tgui::Color::Yellow);
-        canvas->draw(sprite);
-        canvas->draw(vertices.data(), vertices.size(), sf::PrimitiveType::TrianglesStrip);
-        canvas->display();
+            std::vector<sf::Vertex> vertices = {
+                    {{80, 90}, tgui::Color::Red},
+                    {{80, 115}, tgui::Color::Red},
+                    {{100, 90}, tgui::Color::Red},
+                    {{100, 115}, tgui::Color::Red}
+                };
 
-        TEST_DRAW("Canvas.png")
+            canvas->clear(tgui::Color::Yellow);
+            canvas->draw(sprite);
+            canvas->draw(vertices.data(), vertices.size(), sf::PrimitiveType::TriangleStrip);
+            canvas->display();
+
+            TEST_DRAW("Canvas.png")
+        }
     }
 }
+#endif
 
-#endif // TGUI_HAS_BACKEND_SFML
+#if TGUI_HAS_RENDERER_BACKEND_SDL_RENDERER
+
+#if TGUI_BUILD_AS_CXX_MODULE
+    import tgui.backend.renderer.sdl_renderer;
+#else
+    #include <TGUI/Backend/Renderer/SDL_Renderer/CanvasSDL.hpp>
+    #include <TGUI/Backend/Renderer/SDL_Renderer/BackendRendererSDL.hpp>
+#endif
+
+TEST_CASE("[CanvasSDL]")
+{
+    if (std::dynamic_pointer_cast<tgui::BackendRendererSDL>(tgui::getBackend()->getRenderer()))
+    {
+        tgui::CanvasSDL::Ptr canvas = tgui::CanvasSDL::create();
+        canvas->getRenderer()->setFont("resources/DejaVuSans.ttf");
+
+        SECTION("WidgetType")
+        {
+            REQUIRE(canvas->getWidgetType() == "CanvasSDL");
+        }
+
+        SECTION("constructor")
+        {
+            canvas = tgui::CanvasSDL::create({200, 100});
+            REQUIRE(canvas->getSize() == tgui::Vector2f(200, 100));
+        }
+
+        SECTION("internal texture target")
+        {
+            canvas = tgui::CanvasSDL::create({50, 50});
+            SDL_Texture* internalTextureTarget = canvas->getTextureTarget();
+
+            canvas->setSize({70, 80});
+
+            // The address of the texture target has changed with the resize
+            REQUIRE(internalTextureTarget != canvas->getTextureTarget());
+            internalTextureTarget = canvas->getTextureTarget();
+
+            // Changing the position has no impact on the internal texture
+            canvas->setPosition({10, 5});
+            REQUIRE(internalTextureTarget == canvas->getTextureTarget());
+        }
+
+        testWidgetRenderer(canvas->getRenderer());
+
+        SECTION("Saving and loading from file")
+        {
+            REQUIRE_NOTHROW(canvas = tgui::CanvasSDL::create({60, 40}));
+
+            testSavingWidget("CanvasSDL", canvas, false);
+        }
+    }
+}
+#endif
+
+#if TGUI_HAS_RENDERER_BACKEND_OPENGL3
+
+#if TGUI_BUILD_AS_CXX_MODULE
+    import tgui.backend.renderer.opengl3;
+#else
+    #include <TGUI/Backend/Renderer/OpenGL3/CanvasOpenGL3.hpp>
+    #include <TGUI/Backend/Renderer/OpenGL3/BackendRendererOpenGL3.hpp>
+#endif
+
+TEST_CASE("[CanvasOpenGL3]")
+{
+    if (std::dynamic_pointer_cast<tgui::BackendRendererOpenGL3>(tgui::getBackend()->getRenderer()))
+    {
+        tgui::CanvasOpenGL3::Ptr canvas = tgui::CanvasOpenGL3::create();
+        canvas->getRenderer()->setFont("resources/DejaVuSans.ttf");
+
+        SECTION("WidgetType")
+        {
+            REQUIRE(canvas->getWidgetType() == "CanvasOpenGL3");
+        }
+
+        SECTION("constructor")
+        {
+            canvas = tgui::CanvasOpenGL3::create({200, 100});
+            REQUIRE(canvas->getSize() == tgui::Vector2f(200, 100));
+        }
+
+        testWidgetRenderer(canvas->getRenderer());
+
+        SECTION("Saving and loading from file")
+        {
+            REQUIRE_NOTHROW(canvas = tgui::CanvasOpenGL3::create({60, 40}));
+
+            testSavingWidget("CanvasOpenGL3", canvas, false);
+        }
+    }
+}
+#endif
+
+#if TGUI_HAS_RENDERER_BACKEND_GLES2
+
+#if TGUI_BUILD_AS_CXX_MODULE
+    import tgui.backend.renderer.gles2;
+#else
+    #include <TGUI/Backend/Renderer/GLES2/CanvasGLES2.hpp>
+    #include <TGUI/Backend/Renderer/GLES2/BackendRendererGLES2.hpp>
+#endif
+
+TEST_CASE("[CanvasGLES2]")
+{
+    if (std::dynamic_pointer_cast<tgui::BackendRendererGLES2>(tgui::getBackend()->getRenderer()))
+    {
+        tgui::CanvasGLES2::Ptr canvas = tgui::CanvasGLES2::create();
+        canvas->getRenderer()->setFont("resources/DejaVuSans.ttf");
+
+        SECTION("WidgetType")
+        {
+            REQUIRE(canvas->getWidgetType() == "CanvasGLES2");
+        }
+
+        SECTION("constructor")
+        {
+            canvas = tgui::CanvasGLES2::create({200, 100});
+            REQUIRE(canvas->getSize() == tgui::Vector2f(200, 100));
+        }
+
+        testWidgetRenderer(canvas->getRenderer());
+
+        SECTION("Saving and loading from file")
+        {
+            REQUIRE_NOTHROW(canvas = tgui::CanvasGLES2::create({60, 40}));
+
+            testSavingWidget("CanvasGLES2", canvas, false);
+        }
+    }
+}
+#endif

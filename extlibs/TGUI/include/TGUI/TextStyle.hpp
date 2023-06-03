@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,16 +27,15 @@
 #define TGUI_TEXT_STYLE_HPP
 
 #include <TGUI/String.hpp>
-#include <string>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Enumeration of the text drawing styles
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    enum TextStyle
+    enum TextStyle : unsigned int
     {
         Regular       = 0,      //!< Regular characters, no style
         Bold          = 1 << 0, //!< Bold characters
@@ -63,7 +62,7 @@ namespace tgui
         ///
         /// The isSet function will return false when the object was created using this constructor.
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        TGUI_CONSTEXPR TextStyles() :
+        constexpr TextStyles() :
             m_isSet{false},
             m_style{Regular}
         {
@@ -79,7 +78,7 @@ namespace tgui
         /// TextStyles style{tgui::TextStyle::Italic | tgui::TextStyle::Bold};
         /// @endcode
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        TGUI_CONSTEXPR TextStyles(unsigned int style) :
+        constexpr TextStyles(unsigned int style) :
             m_isSet{true},
             m_style{style}
         {
@@ -111,7 +110,7 @@ namespace tgui
         ///
         /// @return True if a text style was passed to the constructor, false when the default constructor was used
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        TGUI_CONSTEXPR bool isSet() const
+        TGUI_NODISCARD constexpr bool isSet() const
         {
             return m_isSet;
         }
@@ -122,7 +121,7 @@ namespace tgui
         ///
         /// @return The text styles stored in this object, or tgui::TextStyle::Regular if no style was set
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        TGUI_CONSTEXPR operator unsigned int() const
+        constexpr operator unsigned int() const
         {
             return m_style;
         }
@@ -131,8 +130,9 @@ namespace tgui
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private:
 
-        bool         m_isSet;
-        unsigned int m_style;
+        bool         m_isSet; // Stores the flag indicating whether this object has been explicitly initialized or created from default.
+
+        unsigned int m_style; // Stores the text styles represented by this object.
     };
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

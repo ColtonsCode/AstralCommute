@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,7 +27,7 @@
 #include <TGUI/Container.hpp>
 #include <TGUI/Animation.hpp>
 #include <TGUI/Vector2.hpp>
-#include <TGUI/GuiBase.hpp>
+#include <TGUI/Backend/Window/BackendGui.hpp>
 #include <TGUI/Loading/WidgetFactory.hpp>
 #include <TGUI/SignalManager.hpp>
 
@@ -39,7 +39,7 @@ namespace tgui
 
     namespace
     {
-        void finishExistingConflictingAnimations(std::vector<std::shared_ptr<priv::Animation>>& animations, ShowEffectType type)
+        void finishExistingConflictingAnimations(std::vector<std::unique_ptr<priv::Animation>>& animations, ShowEffectType type)
         {
             // Only one animation of each type can be played at the same type. If e.g. a fade animation was already in progress
             // when starting a new one, the old animation is finished immediately.
@@ -48,9 +48,9 @@ namespace tgui
             while (animIt != animations.end())
             {
                 auto& animation = *animIt;
-                if (((type == ShowEffectType::Fade) && (animation->getType() == priv::Animation::Type::Fade))
-                 || ((type == ShowEffectType::Scale) && (animation->getType() == priv::Animation::Type::Resize))
-                 || ((type != ShowEffectType::Fade) && (animation->getType() == priv::Animation::Type::Move)))
+                if (((type == ShowEffectType::Fade) && (animation->getType() == AnimationType::Opacity))
+                 || ((type == ShowEffectType::Scale) && (animation->getType() == AnimationType::Resize))
+                 || ((type != ShowEffectType::Fade) && (animation->getType() == AnimationType::Move)))
                 {
                     animation->finish();
                     animIt = animations.erase(animIt);
@@ -62,10 +62,10 @@ namespace tgui
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        static Layout2d parseLayout(String str)
+        TGUI_NODISCARD static Layout2d parseLayout(String str)
         {
             if (str.empty())
-                throw Exception{"Failed to parse layout. String was empty."};
+                throw Exception{U"Failed to parse layout. String was empty."};
 
             // Remove the brackets around the value
             if (((str.front() == '(') && (str.back() == ')')) || ((str.front() == '{') && (str.back() == '}')))
@@ -85,7 +85,7 @@ namespace tgui
                 else if (str[commaOrBracketPos] == ')')
                 {
                     if (bracketCount == 0)
-                        throw Exception{"Failed to parse layout '" + str + "'. Brackets didn't match."};
+                        throw Exception{U"Failed to parse layout '" + str + U"'. Brackets didn't match."};
 
                     bracketCount--;
                 }
@@ -113,10 +113,10 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    static Vector2f parseVector2f(String str)
+    TGUI_NODISCARD static Vector2f parseVector2f(String str)
     {
         if (str.empty())
-            throw Exception{"Failed to parse Vector2f string. String was empty."};
+            throw Exception{U"Failed to parse Vector2f string. String was empty."};
 
         // Remove the brackets around the value
         if ((str.front() == '(') && (str.back() == ')'))
@@ -124,20 +124,20 @@ namespace tgui
 
         const auto commaPos = str.find(',');
         if (commaPos == String::npos)
-            throw Exception{"Failed to parse Vector2f string '" + str + "'. No comma found."};
+            throw Exception{U"Failed to parse Vector2f string '" + str + U"'. No comma found."};
 
         return {str.substr(0, commaPos).trim().toFloat(), str.substr(commaPos + 1).trim().toFloat()};
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-TGUI_IGNORE_DEPRECATED_WARNINGS_START
+
     Widget::Widget(const char* typeName, bool initRenderer) :
         m_type(typeName)
     {
         if (initRenderer)
         {
             m_renderer = aurora::makeCopied<WidgetRenderer>();
-            m_renderer->subscribe(this, m_rendererChangedCallback);
+            m_renderer->subscribe(this);
         }
     }
 
@@ -178,13 +178,13 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
         m_visible                      {other.m_visible},
         m_parent                       {nullptr},
         m_parentGui                    {nullptr},
-        m_draggableWidget              {other.m_draggableWidget},
         m_containerWidget              {other.m_containerWidget},
         m_toolTip                      {other.m_toolTip ? other.m_toolTip->clone() : nullptr},
         m_renderer                     {other.m_renderer},
-        m_showAnimations               {other.m_showAnimations},
+        m_showAnimations               {},
         m_fontCached                   {other.m_fontCached},
         m_opacityCached                {other.m_opacityCached},
+        m_textSizeCached               {other.m_textSizeCached},
         m_mouseCursor                  {other.m_mouseCursor}
     {
         m_position.x.connectWidget(this, true, [this]{ setPosition(getPositionLayout()); });
@@ -192,13 +192,13 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
         m_size.x.connectWidget(this, true, [this]{ setSize(getSizeLayout()); });
         m_size.y.connectWidget(this, false, [this]{ setSize(getSizeLayout()); });
 
-        m_renderer->subscribe(this, m_rendererChangedCallback);
+        m_renderer->subscribe(this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Widget::Widget(Widget&& other) :
-        enable_shared_from_this<Widget>{std::move(other)},
+    Widget::Widget(Widget&& other) noexcept :
+        enable_shared_from_this<Widget>{other},
         onPositionChange               {std::move(other.onPositionChange)},
         onSizeChange                   {std::move(other.onSizeChange)},
         onFocus                        {std::move(other.onFocus)},
@@ -225,13 +225,13 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
         m_mouseDown                    {std::move(other.m_mouseDown)},
         m_focused                      {std::move(other.m_focused)},
         m_animationTimeElapsed         {std::move(other.m_animationTimeElapsed)},
-        m_draggableWidget              {std::move(other.m_draggableWidget)},
         m_containerWidget              {std::move(other.m_containerWidget)},
         m_toolTip                      {std::move(other.m_toolTip)},
         m_renderer                     {other.m_renderer},
         m_showAnimations               {std::move(other.m_showAnimations)},
         m_fontCached                   {std::move(other.m_fontCached)},
         m_opacityCached                {std::move(other.m_opacityCached)},
+        m_textSizeCached               {std::move(other.m_textSizeCached)},
         m_mouseCursor                  {std::move(other.m_mouseCursor)}
     {
         m_position.x.connectWidget(this, true, [this]{ setPosition(getPositionLayout()); });
@@ -240,7 +240,7 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
         m_size.y.connectWidget(this, false, [this]{ setSize(getSizeLayout()); });
 
         other.m_renderer->unsubscribe(&other);
-        m_renderer->subscribe(this, m_rendererChangedCallback);
+        m_renderer->subscribe(this);
 
         other.m_renderer = nullptr;
 
@@ -265,6 +265,8 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
             onMouseEnter.disconnectAll();
             onMouseLeave.disconnectAll();
 
+            m_showAnimations.clear();
+
             m_type                 = other.m_type;
             m_name                 = other.m_name;
             m_position             = other.m_position;
@@ -285,13 +287,12 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
             m_mouseDown            = false;
             m_focused              = false;
             m_animationTimeElapsed = {};
-            m_draggableWidget      = other.m_draggableWidget;
             m_containerWidget      = other.m_containerWidget;
             m_toolTip              = other.m_toolTip ? other.m_toolTip->clone() : nullptr;
             m_renderer             = other.m_renderer;
-            m_showAnimations       = {};
             m_fontCached           = other.m_fontCached;
             m_opacityCached        = other.m_opacityCached;
+            m_textSizeCached       = other.m_textSizeCached;
             m_mouseCursor          = other.m_mouseCursor;
 
             m_position.x.connectWidget(this, true, [this]{ setPosition(getPositionLayout()); });
@@ -299,7 +300,7 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
             m_size.x.connectWidget(this, true, [this]{ setSize(getSizeLayout()); });
             m_size.y.connectWidget(this, false, [this]{ setSize(getSizeLayout()); });
 
-            m_renderer->subscribe(this, m_rendererChangedCallback);
+            m_renderer->subscribe(this);
         }
 
         return *this;
@@ -307,14 +308,12 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Widget& Widget::operator=(Widget&& other)
+    Widget& Widget::operator=(Widget&& other) noexcept
     {
         if (this != &other)
         {
             m_renderer->unsubscribe(this);
             other.m_renderer->unsubscribe(&other);
-
-            enable_shared_from_this::operator=(std::move(other));
 
             onPositionChange       = std::move(other.onPositionChange);
             onSizeChange           = std::move(other.onSizeChange);
@@ -342,13 +341,13 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
             m_mouseDown            = std::move(other.m_mouseDown);
             m_focused              = std::move(other.m_focused);
             m_animationTimeElapsed = std::move(other.m_animationTimeElapsed);
-            m_draggableWidget      = std::move(other.m_draggableWidget);
             m_containerWidget      = std::move(other.m_containerWidget);
             m_toolTip              = std::move(other.m_toolTip);
             m_renderer             = std::move(other.m_renderer);
             m_showAnimations       = std::move(other.m_showAnimations);
             m_fontCached           = std::move(other.m_fontCached);
             m_opacityCached        = std::move(other.m_opacityCached);
+            m_textSizeCached       = std::move(other.m_textSizeCached);
             m_mouseCursor          = std::move(other.m_mouseCursor);
 
             m_position.x.connectWidget(this, true, [this]{ setPosition(getPositionLayout()); });
@@ -356,17 +355,17 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
             m_size.x.connectWidget(this, true, [this]{ setSize(getSizeLayout()); });
             m_size.y.connectWidget(this, false, [this]{ setSize(getSizeLayout()); });
 
-            m_renderer->subscribe(this, m_rendererChangedCallback);
-
-            other.m_renderer = nullptr;
+            m_renderer->subscribe(this);
 
             if (other.m_parent)
                 SignalManager::getSignalManager()->remove(&other);
+
+            enable_shared_from_this::operator=(std::move(other));
         }
 
         return *this;
     }
-TGUI_IGNORE_DEPRECATED_WARNINGS_END
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     void Widget::setRenderer(std::shared_ptr<RendererData> rendererData)
@@ -374,12 +373,94 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
         if (rendererData == nullptr)
             rendererData = RendererData::create();
 
+        // Fill in default and inherited properties in the renderer when it was loaded from a theme
+        if (rendererData->connectedTheme && !rendererData->themePropertiesInherited)
+        {
+            std::vector<String> parentTypes;
+            String widgetType = getWidgetType();
+            while (!widgetType.empty())
+            {
+                widgetType = Theme::getRendererInheritanceParent(widgetType);
+                if (!widgetType.empty())
+                    parentTypes.push_back(widgetType);
+            }
+
+            // If there are no properties then check if we need to inherit them.
+            // We do this because the theme has empty sections for widgets that weren't specified. If the theme does specify
+            // widget properties then the inheritance should also be specified inside the theme file and the inheritance
+            // would have already copied the properties before this code is reached.
+            if (rendererData->propertyValuePairs.empty())
+            {
+                // Copy the properties of the first parent that isn't empty as well
+                for (const String& parentType : parentTypes)
+                {
+                    auto parentRenderer = rendererData->connectedTheme->getRendererNoThrow(parentType);
+                    if (!parentRenderer || parentRenderer->propertyValuePairs.empty())
+                        continue;
+
+                    rendererData->propertyValuePairs = parentRenderer->propertyValuePairs;
+                    break;
+                }
+            }
+
+            parentTypes.insert(parentTypes.begin(), getWidgetType());
+            const auto& globalRelationMap = Theme::getRendererInheritedGlobalProperties("");
+            for (const String& parentType : parentTypes)
+            {
+                // Check if we should automatically link to other widgets, e.g. a widget with a scrollbar should
+                // use the scrollbar defined by the theme if it isn't explicitly specified for the widget.
+                const auto& defaultSubwidgetsMap = Theme::getRendererDefaultSubwidgets(parentType);
+                for (const auto& pair : defaultSubwidgetsMap)
+                {
+                    if (rendererData->propertyValuePairs.find(pair.first) != rendererData->propertyValuePairs.end())
+                        continue;
+
+                    const String& subwidgetType = pair.second.empty() ? pair.first : pair.second;
+                    auto subwidgetRenderer = rendererData->connectedTheme->getRendererNoThrow(subwidgetType);
+                    if (!subwidgetRenderer)
+                        continue;
+
+                    rendererData->propertyValuePairs[pair.first] = ObjectConverter{subwidgetRenderer};
+                }
+
+                // Copy global values for unspecified parameters
+                const auto& globalPropertiesMap = Theme::getRendererInheritedGlobalProperties(parentType);
+                for (const auto& pair : globalPropertiesMap)
+                {
+                    if (rendererData->propertyValuePairs.find(pair.first) != rendererData->propertyValuePairs.end())
+                        continue;
+
+                    const String& propertyName = pair.second.empty() ? pair.first : pair.second;
+                    const auto& property = rendererData->connectedTheme->getGlobalProperty(propertyName);
+                    if (property.getType() != ObjectConverter::Type::None)
+                    {
+                        rendererData->propertyValuePairs[pair.first] = property;
+                        continue;
+                    }
+
+                    // Global properties can inherit from each other (e.g. border color defaults to text color)
+                    auto propertyNameIt = globalRelationMap.find(propertyName);
+                    if (propertyNameIt == globalRelationMap.end())
+                        continue;
+
+                    const auto& globalProperty = rendererData->connectedTheme->getGlobalProperty(propertyNameIt->second);
+                    if (globalProperty.getType() != ObjectConverter::Type::None)
+                    {
+                        rendererData->propertyValuePairs[pair.first] = globalProperty;
+                        continue;
+                    }
+                }
+            }
+
+            rendererData->themePropertiesInherited = true;
+        }
+
         std::shared_ptr<RendererData> oldData = m_renderer->getData();
 
         // Update the data
         m_renderer->unsubscribe(this);
         m_renderer->setData(rendererData);
-        m_renderer->subscribe(this, m_rendererChangedCallback);
+        m_renderer->subscribe(this);
         rendererData->shared = true;
 
         // Tell the widget about all the updated properties, both new ones and old ones that were now reset to their default value
@@ -436,30 +517,13 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    const WidgetRenderer* Widget::getRenderer() const
-    {
-        if (m_renderer->getData()->shared)
-        {
-            m_renderer->unsubscribe(this);
-            m_renderer->setData(m_renderer->clone());
-            m_renderer->subscribe(this, m_rendererChangedCallback);
-            m_renderer->getData()->shared = false;
-        }
-
-        // You should not be allowed to call setters on the renderer when the widget is const
-        return m_renderer.get();
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     WidgetRenderer* Widget::getRenderer()
     {
         if (m_renderer->getData()->shared)
         {
             m_renderer->unsubscribe(this);
             m_renderer->setData(m_renderer->clone());
-            m_renderer->subscribe(this, m_rendererChangedCallback);
-            m_renderer->getData()->shared = false;
+            m_renderer->subscribe(this);
         }
 
         return m_renderer.get();
@@ -478,7 +542,9 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
             m_prevPosition = getPosition();
             onPositionChange.emit(this, getPosition());
 
-            for (auto& layout : m_boundPositionLayouts)
+            // Update the connected layouts, but make a copy of the set before iterating over it to prevent issues
+            // with the list being changed during the loop if some layout gets copied in a called setSize or setPosition function.
+            for (auto* layout : std::unordered_set<Layout*>(m_boundPositionLayouts))
                 layout->recalculateValue();
         }
     }
@@ -496,8 +562,19 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
             m_prevSize = getSize();
             onSizeChange.emit(this, getSize());
 
-            for (auto& layout : m_boundSizeLayouts)
+            // Update the connected layouts, but make a copy of the set before iterating over it to prevent issues
+            // with the list being changed during the loop if some layout gets copied in a called setSize or setPosition function.
+            for (auto* layout : std::unordered_set<Layout*>(m_boundSizeLayouts))
                 layout->recalculateValue();
+
+            // If the origin isn't in the top left then changing the size also changes the position of the widget.
+            // Note that getPosition() will still return the same value (hence we don't trigger onPositionChange), but if a
+            // layout was bound the the left or top of the widget as opposed to the X/Y coordinate then it needs to be recalculated.
+            if ((m_origin.x != 0) || (m_origin.y != 0))
+            {
+                for (auto* layout : std::unordered_set<Layout*>(m_boundPositionLayouts))
+                    layout->recalculateValue();
+            }
         }
     }
 
@@ -602,7 +679,7 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-TGUI_IGNORE_DEPRECATED_WARNINGS_START
+
     void Widget::showWithEffect(ShowEffectType type, Duration duration)
     {
         setVisible(true);
@@ -631,24 +708,36 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
                 else // If fading was already in progress then adapt the duration to finish the animation sooner
                     duration *= (startOpacity / endOpacity);
 
-                m_showAnimations.push_back(std::make_shared<priv::FadeAnimation>(shared_from_this(), animStartOpacity, endOpacity, duration,
-                                                                                 TGUI_LAMBDA_CAPTURE_EQ_THIS{onAnimationFinish.emit(this, type, true); onShowEffectFinish.emit(this, type, true); }));
+                m_showAnimations.push_back(std::make_unique<priv::FadeAnimation>(shared_from_this(), animStartOpacity, endOpacity, duration,
+                    TGUI_LAMBDA_CAPTURE_EQ_THIS{
+                        onAnimationFinish.emit(this, AnimationType::Opacity);
+                        onShowEffectFinish.emit(this, type, true);
+                    }
+                ));
                 break;
             }
             case ShowEffectType::Scale:
             {
                 // TODO: Use setScale instead of setSize
-                m_showAnimations.push_back(std::make_shared<priv::MoveAnimation>(shared_from_this(), getPosition() + (getSize() / 2.f), m_position, duration));
-                m_showAnimations.push_back(std::make_shared<priv::ResizeAnimation>(shared_from_this(), Vector2f{0, 0}, m_size, duration,
-                                                                                   TGUI_LAMBDA_CAPTURE_EQ_THIS{onAnimationFinish.emit(this, type, true); onShowEffectFinish.emit(this, type, true); }));
+                m_showAnimations.push_back(std::make_unique<priv::MoveAnimation>(shared_from_this(), getPosition() + (getSize() / 2.f), m_position, duration));
+                m_showAnimations.push_back(std::make_unique<priv::ResizeAnimation>(shared_from_this(), Vector2f{0, 0}, m_size, duration,
+                    TGUI_LAMBDA_CAPTURE_EQ_THIS{
+                        onAnimationFinish.emit(this, AnimationType::Resize);
+                        onShowEffectFinish.emit(this, type, true);
+                    }
+                ));
                 setPosition(getPosition() + (getSize() / 2.f));
                 setSize(0, 0);
                 break;
             }
             case ShowEffectType::SlideFromLeft:
             {
-                m_showAnimations.push_back(std::make_shared<priv::MoveAnimation>(shared_from_this(), Vector2f{-getFullSize().x, getPosition().y}, m_position, duration,
-                                                                                 TGUI_LAMBDA_CAPTURE_EQ_THIS{onAnimationFinish.emit(this, type, true); onShowEffectFinish.emit(this, type, true); }));
+                m_showAnimations.push_back(std::make_unique<priv::MoveAnimation>(shared_from_this(), Vector2f{-getFullSize().x, getPosition().y}, m_position, duration,
+                    TGUI_LAMBDA_CAPTURE_EQ_THIS{
+                        onAnimationFinish.emit(this, AnimationType::Move);
+                        onShowEffectFinish.emit(this, type, true);
+                    }
+                ));
                 setPosition({-getFullSize().x, getPosition().y});
                 break;
             }
@@ -656,8 +745,12 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
             {
                 if (getParent())
                 {
-                    m_showAnimations.push_back(std::make_shared<priv::MoveAnimation>(shared_from_this(), Vector2f{getParent()->getSize().x + getWidgetOffset().x, getPosition().y}, m_position, duration,
-                                                                                     TGUI_LAMBDA_CAPTURE_EQ_THIS{onAnimationFinish.emit(this, type, true); onShowEffectFinish.emit(this, type, true); }));
+                    m_showAnimations.push_back(std::make_unique<priv::MoveAnimation>(shared_from_this(), Vector2f{getParent()->getSize().x + getWidgetOffset().x, getPosition().y}, m_position, duration,
+                        TGUI_LAMBDA_CAPTURE_EQ_THIS{
+                            onAnimationFinish.emit(this, AnimationType::Move);
+                            onShowEffectFinish.emit(this, type, true);
+                        }
+                    ));
                     setPosition({getParent()->getSize().x + getWidgetOffset().x, getPosition().y});
                 }
                 else
@@ -669,8 +762,12 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
             }
             case ShowEffectType::SlideFromTop:
             {
-                m_showAnimations.push_back(std::make_shared<priv::MoveAnimation>(shared_from_this(), Vector2f{getPosition().x, -getFullSize().y}, m_position, duration,
-                                                                                 TGUI_LAMBDA_CAPTURE_EQ_THIS{onAnimationFinish.emit(this, type, true); onShowEffectFinish.emit(this, type, true); }));
+                m_showAnimations.push_back(std::make_unique<priv::MoveAnimation>(shared_from_this(), Vector2f{getPosition().x, -getFullSize().y}, m_position, duration,
+                    TGUI_LAMBDA_CAPTURE_EQ_THIS{
+                        onAnimationFinish.emit(this, AnimationType::Move);
+                        onShowEffectFinish.emit(this, type, true);
+                    }
+                ));
                 setPosition({getPosition().x, -getFullSize().y});
                 break;
             }
@@ -678,8 +775,12 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
             {
                 if (getParent())
                 {
-                    m_showAnimations.push_back(std::make_shared<priv::MoveAnimation>(shared_from_this(), Vector2f{getPosition().x, getParent()->getSize().y + getWidgetOffset().y}, m_position, duration,
-                                                                                     TGUI_LAMBDA_CAPTURE_EQ_THIS{onAnimationFinish.emit(this, type, true); onShowEffectFinish.emit(this, type, true); }));
+                    m_showAnimations.push_back(std::make_unique<priv::MoveAnimation>(shared_from_this(), Vector2f{getPosition().x, getParent()->getSize().y + getWidgetOffset().y}, m_position, duration,
+                        TGUI_LAMBDA_CAPTURE_EQ_THIS{
+                            onAnimationFinish.emit(this, AnimationType::Move);
+                            onShowEffectFinish.emit(this, type, true);
+                        }
+                    ));
                     setPosition({getPosition().x, getParent()->getSize().y + getWidgetOffset().y});
                 }
                 else
@@ -718,8 +819,14 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
                 if (startOpacity != endOpacity)
                     duration *= (startOpacity / endOpacity);
 
-                m_showAnimations.push_back(std::make_shared<priv::FadeAnimation>(shared_from_this(), startOpacity, 0.f, duration,
-                    TGUI_LAMBDA_CAPTURE_EQ_THIS{ setVisible(false); setInheritedOpacity(endOpacity); onAnimationFinish.emit(this, type, false); onShowEffectFinish.emit(this, type, false); }));
+                m_showAnimations.push_back(std::make_unique<priv::FadeAnimation>(shared_from_this(), startOpacity, 0.f, duration,
+                    TGUI_LAMBDA_CAPTURE_EQ_THIS{
+                        setVisible(false);
+                        setInheritedOpacity(endOpacity);
+                        onAnimationFinish.emit(this, AnimationType::Opacity);
+                        onShowEffectFinish.emit(this, type, false);
+                    }
+                ));
                 break;
             }
             case ShowEffectType::Scale:
@@ -727,17 +834,30 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
                 // TODO: Use setScale instead of setSize
                 const Vector2f size = getSize();
                 const Layout2d sizeLayout = m_size;
-                m_showAnimations.push_back(std::make_shared<priv::MoveAnimation>(shared_from_this(), position, position + (size / 2.f), duration));
-                m_showAnimations.push_back(std::make_shared<priv::ResizeAnimation>(shared_from_this(), size, Vector2f{0, 0}, duration,
-                    TGUI_LAMBDA_CAPTURE_EQ_THIS{ setVisible(false); setPosition(positionLayout); setSize(sizeLayout); onAnimationFinish.emit(this, type, false); onShowEffectFinish.emit(this, type, false); }));
+                m_showAnimations.push_back(std::make_unique<priv::MoveAnimation>(shared_from_this(), position, position + (size / 2.f), duration));
+                m_showAnimations.push_back(std::make_unique<priv::ResizeAnimation>(shared_from_this(), size, Vector2f{0, 0}, duration,
+                    TGUI_LAMBDA_CAPTURE_EQ_THIS{
+                        setVisible(false);
+                        setPosition(positionLayout);
+                        setSize(sizeLayout);
+                        onAnimationFinish.emit(this, AnimationType::Resize);
+                        onShowEffectFinish.emit(this, type, false);
+                    }
+                ));
                 break;
             }
             case ShowEffectType::SlideToRight:
             {
                 if (getParent())
                 {
-                    m_showAnimations.push_back(std::make_shared<priv::MoveAnimation>(shared_from_this(), position, Vector2f{getParent()->getSize().x + getWidgetOffset().x, position.y}, duration,
-                        TGUI_LAMBDA_CAPTURE_EQ_THIS{ setVisible(false); setPosition(positionLayout); onAnimationFinish.emit(this, type, false); onShowEffectFinish.emit(this, type, false); }));
+                    m_showAnimations.push_back(std::make_unique<priv::MoveAnimation>(shared_from_this(), position, Vector2f{getParent()->getSize().x + getWidgetOffset().x, position.y}, duration,
+                        TGUI_LAMBDA_CAPTURE_EQ_THIS{
+                            setVisible(false);
+                            setPosition(positionLayout);
+                            onAnimationFinish.emit(this, AnimationType::Move);
+                            onShowEffectFinish.emit(this, type, false);
+                        }
+                    ));
                 }
                 else
                 {
@@ -748,16 +868,28 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
             }
             case ShowEffectType::SlideToLeft:
             {
-                m_showAnimations.push_back(std::make_shared<priv::MoveAnimation>(shared_from_this(), position, Vector2f{-getFullSize().x, position.y}, duration,
-                    TGUI_LAMBDA_CAPTURE_EQ_THIS{ setVisible(false); setPosition(positionLayout); onAnimationFinish.emit(this, type, false); onShowEffectFinish.emit(this, type, false); }));
+                m_showAnimations.push_back(std::make_unique<priv::MoveAnimation>(shared_from_this(), position, Vector2f{-getFullSize().x, position.y}, duration,
+                    TGUI_LAMBDA_CAPTURE_EQ_THIS{
+                        setVisible(false);
+                        setPosition(positionLayout);
+                        onAnimationFinish.emit(this, AnimationType::Move);
+                        onShowEffectFinish.emit(this, type, false);
+                    }
+                ));
                 break;
             }
             case ShowEffectType::SlideToBottom:
             {
                 if (getParent())
                 {
-                    m_showAnimations.push_back(std::make_shared<priv::MoveAnimation>(shared_from_this(), position, Vector2f{position.x, getParent()->getSize().y + getWidgetOffset().y}, duration,
-                        TGUI_LAMBDA_CAPTURE_EQ_THIS{ setVisible(false); setPosition(positionLayout); onAnimationFinish.emit(this, type, false); onShowEffectFinish.emit(this, type, false); }));
+                    m_showAnimations.push_back(std::make_unique<priv::MoveAnimation>(shared_from_this(), position, Vector2f{position.x, getParent()->getSize().y + getWidgetOffset().y}, duration,
+                        TGUI_LAMBDA_CAPTURE_EQ_THIS{
+                            setVisible(false);
+                            setPosition(positionLayout);
+                            onAnimationFinish.emit(this, AnimationType::Move);
+                            onShowEffectFinish.emit(this, type, false);
+                        }
+                    ));
                 }
                 else
                 {
@@ -768,13 +900,43 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
             }
             case ShowEffectType::SlideToTop:
             {
-                m_showAnimations.push_back(std::make_shared<priv::MoveAnimation>(shared_from_this(), position, Vector2f{position.x, -getFullSize().y}, duration,
-                    TGUI_LAMBDA_CAPTURE_EQ_THIS{ setVisible(false); setPosition(positionLayout); onAnimationFinish.emit(this, type, false); onShowEffectFinish.emit(this, type, false); }));
+                m_showAnimations.push_back(std::make_unique<priv::MoveAnimation>(shared_from_this(), position, Vector2f{position.x, -getFullSize().y}, duration,
+                    TGUI_LAMBDA_CAPTURE_EQ_THIS{
+                        setVisible(false);
+                        setPosition(positionLayout);
+                        onAnimationFinish.emit(this, AnimationType::Move);
+                        onShowEffectFinish.emit(this, type, false);
+                    }
+                ));
                 break;
             }
         }
     }
-TGUI_IGNORE_DEPRECATED_WARNINGS_END
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void Widget::moveWithAnimation(Layout2d position, Duration duration)
+    {
+        position.x.connectWidget(this, true, nullptr);
+        position.y.connectWidget(this, false, nullptr);
+
+        m_showAnimations.push_back(std::make_unique<priv::MoveAnimation>(shared_from_this(), getPosition(), position, duration,
+            [this]{ onAnimationFinish.emit(this, AnimationType::Move); }
+        ));
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void Widget::resizeWithAnimation(Layout2d size, Duration duration)
+    {
+        size.x.connectWidget(this, true, nullptr);
+        size.y.connectWidget(this, false, nullptr);
+
+        m_showAnimations.push_back(std::make_unique<priv::ResizeAnimation>(shared_from_this(), getSize(), size, duration,
+            [this]{ onAnimationFinish.emit(this, AnimationType::Resize); }
+        ));
+    }
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     void Widget::setVisible(bool visible)
@@ -906,20 +1068,27 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
     void Widget::setTextSize(unsigned int size)
     {
         m_textSize = size;
+
+        if (getSharedRenderer()->getTextSize())
+            m_textSizeCached = getSharedRenderer()->getTextSize();
+        else
+            m_textSizeCached = m_textSize;
+
+        updateTextSize();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     unsigned int Widget::getTextSize() const
     {
-        return m_textSize;
+        return m_textSizeCached;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     void Widget::setToolTip(Widget::Ptr toolTip)
     {
-        m_toolTip = toolTip;
+        m_toolTip = std::move(toolTip);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -984,6 +1153,16 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    void Widget::finishAllAnimations()
+    {
+        for (auto& animation : m_showAnimations)
+            animation->finish();
+
+        m_showAnimations.clear();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     bool Widget::canGainFocus() const
     {
         return m_enabled && m_visible && m_focusable;
@@ -994,13 +1173,6 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
     bool Widget::isContainer() const
     {
         return m_containerWidget;
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    bool Widget::isDraggableWidget() const
-    {
-        return m_draggableWidget;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1018,8 +1190,17 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
         if (m_parent == parent)
             return;
 
+        if (m_focused)
+            setFocused(false);
+
         if (!parent)
+        {
+            // When removing the widget from its parent, all animations are aborted.
+            // This prevents memory leaks when a widget is removed while it is still playing an animation.
+            finishAllAnimations();
+
             SignalManager::getSignalManager()->remove(this);
+        }
         else if (!m_parent)
             SignalManager::getSignalManager()->add(shared_from_this());
 
@@ -1042,12 +1223,12 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
         m_animationTimeElapsed += elapsedTime;
 
         const bool screenRefreshRequired = !m_showAnimations.empty();
-        for (unsigned int i = 0; i < m_showAnimations.size();)
+        for (auto it = m_showAnimations.begin(); it != m_showAnimations.end();)
         {
-            if (m_showAnimations[i]->update(elapsedTime))
-                m_showAnimations.erase(m_showAnimations.begin() + i);
+            if ((*it)->update(elapsedTime))
+                it = m_showAnimations.erase(it);
             else
-                i++;
+                ++it;
         }
 
         return screenRefreshRequired;
@@ -1055,9 +1236,10 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Widget::leftMousePressed(Vector2f)
+    bool Widget::leftMousePressed(Vector2f)
     {
         m_mouseDown = true;
+        return false; // Widgets aren't draggable by default
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1077,16 +1259,6 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
 
     void Widget::rightMouseReleased(Vector2f)
     {
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    void Widget::mousePressed(Event::MouseButton button, Vector2f pos)
-    {
-        if (button == Event::MouseButton::Left)
-            leftMousePressed(pos);
-        else if (button == Event::MouseButton::Right)
-            rightMousePressed(pos);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1121,7 +1293,7 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    bool Widget::mouseWheelScrolled(float, Vector2f)
+    bool Widget::scrolled(float, Vector2f, bool)
     {
         return false;
     }
@@ -1186,7 +1358,7 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-TGUI_IGNORE_DEPRECATED_WARNINGS_START
+
     Signal& Widget::getSignal(String signalName)
     {
         if (signalName == onPositionChange.getName())
@@ -1206,21 +1378,21 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_START
         else if (signalName == onShowEffectFinish.getName())
             return onShowEffectFinish;
 
-        throw Exception{"No signal exists with name '" + std::move(signalName) + "'."};
+        throw Exception{U"No signal exists with name '" + std::move(signalName) + U"'."};
     }
-TGUI_IGNORE_DEPRECATED_WARNINGS_END
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     void Widget::rendererChanged(const String& property)
     {
-        if ((property == "Opacity") || (property == "OpacityDisabled"))
+        if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
             if (!m_enabled && (getSharedRenderer()->getOpacityDisabled() != -1))
                 m_opacityCached = getSharedRenderer()->getOpacityDisabled() * m_inheritedOpacity;
             else
                 m_opacityCached = getSharedRenderer()->getOpacity() * m_inheritedOpacity;
         }
-        else if (property == "Font")
+        else if (property == U"Font")
         {
             if (getSharedRenderer()->getFont())
                 m_fontCached = getSharedRenderer()->getFont();
@@ -1229,12 +1401,21 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
             else
                 m_fontCached = Font::getGlobalFont();
         }
-        else if (property == "TransparentTexture")
+        else if (property == U"TextSize")
+        {
+            if (getSharedRenderer()->getTextSize())
+                m_textSizeCached = getSharedRenderer()->getTextSize();
+            else
+                m_textSizeCached = m_textSize;
+
+            updateTextSize();
+        }
+        else if (property == U"TransparentTexture")
         {
             m_transparentTextureCached = getSharedRenderer()->getTransparentTexture();
         }
         else
-            throw Exception{"Could not set property '" + property + "', widget of type '" + getWidgetType() + "' does not has this property."};
+            throw Exception{U"Could not set property '" + property + U"', widget of type '" + getWidgetType() + U"' does not has this property."};
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1245,29 +1426,29 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
         if (m_name.empty())
             node->name = getWidgetType();
         else
-            node->name = getWidgetType() + "." + Serializer::serialize(m_name);
+            node->name = getWidgetType() + U"." + Serializer::serialize(m_name);
 
         if (!isVisible())
-            node->propertyValuePairs["Visible"] = std::make_unique<DataIO::ValueNode>("false");
+            node->propertyValuePairs[U"Visible"] = std::make_unique<DataIO::ValueNode>("false");
         if (!isEnabled())
-            node->propertyValuePairs["Enabled"] = std::make_unique<DataIO::ValueNode>("false");
+            node->propertyValuePairs[U"Enabled"] = std::make_unique<DataIO::ValueNode>("false");
         if (getPosition() != Vector2f{})
-            node->propertyValuePairs["Position"] = std::make_unique<DataIO::ValueNode>(m_position.toString());
+            node->propertyValuePairs[U"Position"] = std::make_unique<DataIO::ValueNode>(m_position.toString());
         if (getSize() != Vector2f{})
-            node->propertyValuePairs["Size"] = std::make_unique<DataIO::ValueNode>(m_size.toString());
+            node->propertyValuePairs[U"Size"] = std::make_unique<DataIO::ValueNode>(m_size.toString());
         if (getOrigin() != Vector2f{})
-            node->propertyValuePairs["Origin"] = std::make_unique<DataIO::ValueNode>("(" + String::fromNumber(m_origin.x) + "," + String::fromNumber(m_origin.y) + ")");
+            node->propertyValuePairs[U"Origin"] = std::make_unique<DataIO::ValueNode>("(" + String::fromNumber(m_origin.x) + "," + String::fromNumber(m_origin.y) + ")");
         if (getScale() != Vector2f{1, 1})
         {
-            node->propertyValuePairs["Scale"] = std::make_unique<DataIO::ValueNode>("(" + String::fromNumber(m_scaleFactors.x) + "," + String::fromNumber(m_scaleFactors.y) + ")");
+            node->propertyValuePairs[U"Scale"] = std::make_unique<DataIO::ValueNode>("(" + String::fromNumber(m_scaleFactors.x) + "," + String::fromNumber(m_scaleFactors.y) + ")");
             if (m_scaleOrigin)
-                node->propertyValuePairs["ScaleOrigin"] = std::make_unique<DataIO::ValueNode>("(" + String::fromNumber(m_scaleOrigin->x) + "," + String::fromNumber(m_scaleOrigin->y) + ")");
+                node->propertyValuePairs[U"ScaleOrigin"] = std::make_unique<DataIO::ValueNode>("(" + String::fromNumber(m_scaleOrigin->x) + "," + String::fromNumber(m_scaleOrigin->y) + ")");
         }
         if (getRotation() != 0)
         {
-            node->propertyValuePairs["Rotation"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_rotationDeg));
+            node->propertyValuePairs[U"Rotation"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_rotationDeg));
             if (m_rotationOrigin)
-                node->propertyValuePairs["RotationOrigin"] = std::make_unique<DataIO::ValueNode>("(" + String::fromNumber(m_rotationOrigin->x) + "," + String::fromNumber(m_rotationOrigin->y) + ")");
+                node->propertyValuePairs[U"RotationOrigin"] = std::make_unique<DataIO::ValueNode>("(" + String::fromNumber(m_rotationOrigin->x) + "," + String::fromNumber(m_rotationOrigin->y) + ")");
         }
 #if TGUI_COMPILED_WITH_CPP_VER >= 17
         if (m_userData.has_value())
@@ -1275,17 +1456,17 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
             if (m_userData.type() == typeid(String))
             {
                 const String string = std::any_cast<String>(m_userData);
-                node->propertyValuePairs["UserData"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(string));
+                node->propertyValuePairs[U"UserData"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(string));
             }
             else if (m_userData.type() == typeid(std::string))
             {
                 const String string = std::any_cast<std::string>(m_userData);
-                node->propertyValuePairs["UserData"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(string));
+                node->propertyValuePairs[U"UserData"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(string));
             }
             else if (m_userData.type() == typeid(const char*))
             {
                 const String string = std::any_cast<const char*>(m_userData);
-                node->propertyValuePairs["UserData"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(string));
+                node->propertyValuePairs[U"UserData"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(string));
             }
         }
 #else
@@ -1293,18 +1474,20 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
         {
             if (m_userData.is<String>())
             {
-                node->propertyValuePairs["UserData"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_userData.as<String>()));
+                node->propertyValuePairs[U"UserData"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_userData.as<String>()));
             }
             else if (m_userData.is<std::string>())
             {
-                node->propertyValuePairs["UserData"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(String(m_userData.as<std::string>()))) ;
+                node->propertyValuePairs[U"UserData"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(String(m_userData.as<std::string>()))) ;
             }
             else if (m_userData.is<const char*>())
             {
-                node->propertyValuePairs["UserData"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_userData.as<const char*>()));
+                node->propertyValuePairs[U"UserData"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_userData.as<const char*>()));
             }
         }
 #endif
+        if (m_textSize != 0)
+            node->propertyValuePairs[U"TextSize"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_textSize));
 
         String mouseCursorStr;
         switch (m_mouseCursor)
@@ -1319,13 +1502,15 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
             case Cursor::Type::SizeTopLeft:     mouseCursorStr = "SizeTopLeft"; break;
             case Cursor::Type::SizeBottomLeft:  mouseCursorStr = "SizeBottomLeft"; break;
             case Cursor::Type::SizeTopRight:    mouseCursorStr = "SizeTopRight"; break;
+            case Cursor::Type::SizeHorizontal:  mouseCursorStr = "SizeHorizontal"; break;
+            case Cursor::Type::SizeVertical:    mouseCursorStr = "SizeVertical"; break;
             case Cursor::Type::Crosshair:       mouseCursorStr = "Crosshair"; break;
             case Cursor::Type::Help:            mouseCursorStr = "Help"; break;
             case Cursor::Type::NotAllowed:      mouseCursorStr = "NotAllowed"; break;
             case Cursor::Type::Arrow:           break; // We don't save the cursor if it has the default value
         }
         if (!mouseCursorStr.empty())
-            node->propertyValuePairs["MouseCursor"] = std::make_unique<DataIO::ValueNode>(mouseCursorStr);
+            node->propertyValuePairs[U"MouseCursor"] = std::make_unique<DataIO::ValueNode>(mouseCursorStr);
 
         if (getToolTip() != nullptr)
         {
@@ -1335,9 +1520,9 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
             toolTipNode->name = "ToolTip";
             toolTipNode->children.emplace_back(std::move(toolTipWidgetNode));
 
-            toolTipNode->propertyValuePairs["InitialDelay"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(ToolTip::getInitialDelay().asSeconds()));
-            toolTipNode->propertyValuePairs["DistanceToMouse"] = std::make_unique<DataIO::ValueNode>("("
-                + String::fromNumber(ToolTip::getDistanceToMouse().x) + "," + String::fromNumber(ToolTip::getDistanceToMouse().y) + ")");
+            toolTipNode->propertyValuePairs[U"InitialDelay"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(ToolTip::getInitialDelay().asSeconds()));
+            toolTipNode->propertyValuePairs[U"DistanceToMouse"] = std::make_unique<DataIO::ValueNode>(U"("
+                + String::fromNumber(ToolTip::getDistanceToMouse().x) + "," + String::fromNumber(ToolTip::getDistanceToMouse().y) + U")");
 
             node->children.emplace_back(std::move(toolTipNode));
         }
@@ -1345,7 +1530,7 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
         if (renderers.at(this).first)
             node->children.emplace_back(std::move(renderers.at(this).first));
         else
-            node->propertyValuePairs["Renderer"] = std::make_unique<DataIO::ValueNode>("&" + renderers.at(this).second);
+            node->propertyValuePairs[U"Renderer"] = std::make_unique<DataIO::ValueNode>(U"&" + renderers.at(this).second);
 
         return node;
     }
@@ -1354,96 +1539,102 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
 
     void Widget::load(const std::unique_ptr<DataIO::Node>& node, const LoadingRenderersMap& renderers)
     {
-        if (node->propertyValuePairs["Visible"])
-            setVisible(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["Visible"]->value).getBool());
-        if (node->propertyValuePairs["Enabled"])
-            setEnabled(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["Enabled"]->value).getBool());
-        if (node->propertyValuePairs["Position"])
-            setPosition(parseLayout(node->propertyValuePairs["Position"]->value));
-        if (node->propertyValuePairs["Size"])
-            setSize(parseLayout(node->propertyValuePairs["Size"]->value));
-        if (node->propertyValuePairs["Origin"])
-            setOrigin(parseVector2f(node->propertyValuePairs["Origin"]->value));
-        if (node->propertyValuePairs["Scale"])
+        if (node->propertyValuePairs[U"Visible"])
+            setVisible(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"Visible"]->value).getBool());
+        if (node->propertyValuePairs[U"Enabled"])
+            setEnabled(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"Enabled"]->value).getBool());
+        if (node->propertyValuePairs[U"Position"])
+            setPosition(parseLayout(node->propertyValuePairs[U"Position"]->value));
+        if (node->propertyValuePairs[U"Size"])
+            setSize(parseLayout(node->propertyValuePairs[U"Size"]->value));
+        if (node->propertyValuePairs[U"Origin"])
+            setOrigin(parseVector2f(node->propertyValuePairs[U"Origin"]->value));
+        if (node->propertyValuePairs[U"Scale"])
         {
-            if (node->propertyValuePairs["ScaleOrigin"])
-                setScale(parseVector2f(node->propertyValuePairs["Scale"]->value), parseVector2f(node->propertyValuePairs["ScaleOrigin"]->value));
+            if (node->propertyValuePairs[U"ScaleOrigin"])
+                setScale(parseVector2f(node->propertyValuePairs[U"Scale"]->value), parseVector2f(node->propertyValuePairs[U"ScaleOrigin"]->value));
             else
-                setScale(parseVector2f(node->propertyValuePairs["Scale"]->value));
+                setScale(parseVector2f(node->propertyValuePairs[U"Scale"]->value));
         }
-        if (node->propertyValuePairs["Rotation"])
+        if (node->propertyValuePairs[U"Rotation"])
         {
-            if (node->propertyValuePairs["RotationOrigin"])
-                setRotation(node->propertyValuePairs["Rotation"]->value.toFloat(), parseVector2f(node->propertyValuePairs["RotationOrigin"]->value));
+            if (node->propertyValuePairs[U"RotationOrigin"])
+                setRotation(node->propertyValuePairs[U"Rotation"]->value.toFloat(), parseVector2f(node->propertyValuePairs[U"RotationOrigin"]->value));
             else
-                setRotation(node->propertyValuePairs["Rotation"]->value.toFloat());
+                setRotation(node->propertyValuePairs[U"Rotation"]->value.toFloat());
         }
-        if (node->propertyValuePairs["UserData"])
+        if (node->propertyValuePairs[U"UserData"])
         {
 #if TGUI_COMPILED_WITH_CPP_VER >= 17
-            m_userData = std::make_any<String>(Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs["UserData"]->value).getString());
+            m_userData = std::make_any<String>(Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs[U"UserData"]->value).getString());
 #else
-            m_userData = tgui::Any(Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs["UserData"]->value).getString());
+            m_userData = Any(Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs[U"UserData"]->value).getString());
 #endif
         }
+        if (node->propertyValuePairs[U"TextSize"])
+            setTextSize(node->propertyValuePairs[U"TextSize"]->value.toUInt());
 
-        if (node->propertyValuePairs["MouseCursor"])
+        if (node->propertyValuePairs[U"MouseCursor"])
         {
-            String cursorStr = node->propertyValuePairs["MouseCursor"]->value.trim();
-            if (cursorStr == "Text")
+            String cursorStr = node->propertyValuePairs[U"MouseCursor"]->value.trim();
+            if (cursorStr == U"Text")
                 m_mouseCursor = Cursor::Type::Text;
-            else if (cursorStr == "Hand")
+            else if (cursorStr == U"Hand")
                 m_mouseCursor = Cursor::Type::Hand;
-            else if (cursorStr == "SizeLeft")
+            else if (cursorStr == U"SizeLeft")
                 m_mouseCursor = Cursor::Type::SizeLeft;
-            else if (cursorStr == "SizeRight")
+            else if (cursorStr == U"SizeRight")
                 m_mouseCursor = Cursor::Type::SizeRight;
-            else if (cursorStr == "SizeTop")
+            else if (cursorStr == U"SizeTop")
                 m_mouseCursor = Cursor::Type::SizeTop;
-            else if (cursorStr == "SizeBottom")
+            else if (cursorStr == U"SizeBottom")
                 m_mouseCursor = Cursor::Type::SizeBottom;
-            else if (cursorStr == "SizeBottomRight")
+            else if (cursorStr == U"SizeBottomRight")
                 m_mouseCursor = Cursor::Type::SizeBottomRight;
-            else if (cursorStr == "SizeTopLeft")
+            else if (cursorStr == U"SizeTopLeft")
                 m_mouseCursor = Cursor::Type::SizeTopLeft;
-            else if (cursorStr == "SizeBottomLeft")
+            else if (cursorStr == U"SizeBottomLeft")
                 m_mouseCursor = Cursor::Type::SizeBottomLeft;
-            else if (cursorStr == "SizeTopRight")
+            else if (cursorStr == U"SizeTopRight")
                 m_mouseCursor = Cursor::Type::SizeTopRight;
-            else if (cursorStr == "Crosshair")
+            else if (cursorStr == U"SizeHorizontal")
+                m_mouseCursor = Cursor::Type::SizeHorizontal;
+            else if (cursorStr == U"SizeVertical")
+                m_mouseCursor = Cursor::Type::SizeVertical;
+            else if (cursorStr == U"Crosshair")
                 m_mouseCursor = Cursor::Type::Crosshair;
-            else if (cursorStr == "Help")
+            else if (cursorStr == U"Help")
                 m_mouseCursor = Cursor::Type::Help;
-            else if (cursorStr == "NotAllowed")
+            else if (cursorStr == U"NotAllowed")
                 m_mouseCursor = Cursor::Type::NotAllowed;
-            else if (cursorStr == "Arrow")
+            else if (cursorStr == U"Arrow")
                 m_mouseCursor = Cursor::Type::Arrow;
             else
-                throw Exception{"Failed to parse 'MouseCursor' property. Invalid cursor '" + cursorStr + "'."};
+                throw Exception{U"Failed to parse 'MouseCursor' property. Invalid cursor '" + cursorStr + U"'."};
         }
 
-        if (node->propertyValuePairs["Renderer"])
+        if (node->propertyValuePairs[U"Renderer"])
         {
-            const String value = node->propertyValuePairs["Renderer"]->value;
+            const String value = node->propertyValuePairs[U"Renderer"]->value;
             if (value.empty() || (value[0] != '&'))
-                throw Exception{"Expected reference to renderer, did not find '&' character"};
+                throw Exception{U"Expected reference to renderer, did not find '&' character"};
 
             const auto it = renderers.find(value.substr(1));
             if (it == renderers.end())
-                throw Exception{"Widget refers to renderer with name '" + value.substr(1) + "', but no such renderer was found"};
+                throw Exception{U"Widget refers to renderer with name '" + value.substr(1) + U"', but no such renderer was found"};
 
             setRenderer(it->second);
         }
 
         for (const auto& childNode : node->children)
         {
-            if (childNode->name == "ToolTip")
+            if (childNode->name == U"ToolTip")
             {
                 for (const auto& pair : childNode->propertyValuePairs)
                 {
-                    if (pair.first == "InitialDelay")
+                    if (pair.first == U"InitialDelay")
                         ToolTip::setInitialDelay(std::chrono::duration<float>(pair.second->value.toFloat()));
-                    else if (pair.first == "DistanceToMouse")
+                    else if (pair.first == U"DistanceToMouse")
                         ToolTip::setDistanceToMouse(Vector2f{pair.second->value});
                 }
 
@@ -1451,7 +1642,7 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
                 {
                     // There can only be one child in the tool tip section
                     if (childNode->children.size() > 1)
-                        throw Exception{"ToolTip section contained multiple children."};
+                        throw Exception{U"ToolTip section contained multiple children."};
 
                     const auto& toolTipWidgetNode = childNode->children[0];
                     const auto& constructor = WidgetFactory::getConstructFunction(toolTipWidgetNode->name);
@@ -1462,17 +1653,23 @@ TGUI_IGNORE_DEPRECATED_WARNINGS_END
                         setToolTip(toolTip);
                     }
                     else
-                        throw Exception{"No construct function exists for widget type '" + toolTipWidgetNode->name + "'."};
+                        throw Exception{U"No construct function exists for widget type '" + toolTipWidgetNode->name + "'."};
                 }
             }
-            else if (childNode->name == "Renderer")
+            else if (childNode->name == U"Renderer")
                 setRenderer(RendererData::createFromDataIONode(childNode.get()));
 
             /// TODO: Signals?
         }
         node->children.erase(std::remove_if(node->children.begin(), node->children.end(), [](const std::unique_ptr<DataIO::Node>& child){
-                return (child->name == "ToolTip") || (child->name == "Renderer");
+                return (child->name == U"ToolTip") || (child->name == U"Renderer");
             }), node->children.end());
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void Widget::updateTextSize()
+    {
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

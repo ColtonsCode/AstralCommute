@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -24,7 +24,7 @@
 
 
 #include <TGUI/Components.hpp>
-#include <TGUI/BackendRenderTarget.hpp>
+#include <TGUI/Backend/Renderer/BackendRenderTarget.hpp>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -70,7 +70,7 @@ namespace dev
 
         // Make a copy of the callback ids to prevent issues when unsubscribe removes the value from the set
         const std::set<std::uint64_t> callbackIds = it->second;
-        for (auto& callbackId : callbackIds)
+        for (const auto& callbackId : callbackIds)
             unsubscribe(callbackId);
 
         m_topicIdToCallbackIds.erase(it);
@@ -99,10 +99,17 @@ namespace dev
             return;
         }
 
+#if defined(__GNUC__)
+#   pragma GCC diagnostic push
+#   pragma GCC diagnostic ignored "-Wnull-dereference"  // Suppress warning for not checking the iterator in release mode
+#endif
         // Find out to which topic this callback belongs
         auto it = m_callbackIdToTopicId.find(callbackId);
-        TGUI_ASSERT(it != m_callbackIdToTopicId.end(), "Callback id needs to have matching topic in MessageBroker::unsubscribe");
+        TGUI_ASSERT(it != m_callbackIdToTopicId.end(), "MessageBroker::unsubscribe requires callback id to have matching topic");
         const auto topicId = it->second;
+#if defined(__GNUC__)
+#   pragma GCC diagnostic pop
+#endif
 
         // Remove the callback
         m_listeners.erase(listenersIt);
@@ -123,7 +130,7 @@ namespace dev
 
         // Make a copy of the callback ids to prevent issues when an unsubscribe is called during a callback
         const std::set<std::uint64_t> callbackIds = it->second;
-        for (auto& callbackId : callbackIds)
+        for (const auto& callbackId : callbackIds)
             m_listeners[callbackId]();
     }
 
@@ -300,7 +307,7 @@ namespace dev
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void GroupComponent::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void GroupComponent::draw(BackendRenderTarget& target, RenderStates states) const
     {
         for (const auto& child : m_children)
         {
@@ -494,7 +501,7 @@ namespace dev
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void BackgroundComponent::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void BackgroundComponent::draw(BackendRenderTarget& target, RenderStates states) const
     {
         states.transform.translate(m_position);
 
@@ -651,7 +658,7 @@ namespace dev
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void TextComponent::setFont(Font font)
+    void TextComponent::setFont(const Font& font)
     {
         m_text.setFont(font);
         updateLayout();
@@ -739,7 +746,7 @@ namespace dev
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void TextComponent::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void TextComponent::draw(BackendRenderTarget& target, RenderStates states) const
     {
         if (m_text.getString().empty())
             return;
@@ -849,7 +856,7 @@ namespace dev
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ImageComponent::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void ImageComponent::draw(BackendRenderTarget& target, RenderStates states) const
     {
         states.transform.translate(m_position);
         target.drawSprite(states, m_sprite);

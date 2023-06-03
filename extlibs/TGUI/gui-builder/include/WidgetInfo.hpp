@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -26,12 +26,17 @@
 #ifndef TGUI_GUI_BUILDER_WIDGET_INFO_HPP
 #define TGUI_GUI_BUILDER_WIDGET_INFO_HPP
 
-#include <TGUI/Widget.hpp>
+#include <TGUI/Config.hpp>
+#if TGUI_BUILD_AS_CXX_MODULE
+    import tgui;
+#else
+    #include <TGUI/Widget.hpp>
+#endif
 
 struct WidgetInfo
 {
     WidgetInfo() = default;
-    WidgetInfo(tgui::Widget::Ptr widget) : ptr{widget} {}
+    WidgetInfo(tgui::Widget::Ptr widget) : ptr{std::move(widget)} {}
 
     tgui::Widget::Ptr ptr = nullptr;
     tgui::String name = "";

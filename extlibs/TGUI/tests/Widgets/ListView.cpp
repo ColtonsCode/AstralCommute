@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -22,10 +22,9 @@
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#include <set>
+
 #include "Tests.hpp"
-#include <TGUI/Widgets/ListView.hpp>
-#include <TGUI/Widgets/Group.hpp>
-#include <TGUI/Backend.hpp>
 
 TEST_CASE("[ListView]")
 {
@@ -470,14 +469,28 @@ TEST_CASE("[ListView]")
         REQUIRE(!listView->getMultiSelect());
     }
 
+    SECTION("ResizableColumns")
+    {
+        REQUIRE(!listView->getResizableColumns());
+        listView->setResizableColumns(true);
+        REQUIRE(listView->getResizableColumns());
+        listView->setResizableColumns(false);
+        REQUIRE(!listView->getResizableColumns());
+    }
+
     SECTION("CopyToClipboard")
     {
         tgui::Event::KeyEvent event;
-        event.control = true;
+        event.code = tgui::Event::KeyboardKey::C;
         event.alt = false;
         event.shift = false;
+#ifdef TGUI_SYSTEM_MACOS
+        event.control = false;
+        event.system = true;
+#else
+        event.control = true;
         event.system = false;
-        event.code = tgui::Event::KeyboardKey::C;
+#endif
 
         listView->addItem("1,1");
         listView->addItem({ "2,1", "2,2", "2,3" });
@@ -669,8 +682,8 @@ TEST_CASE("[ListView]")
             listView->addItem("Item 9");
 
             // Scrolling down with mouse wheel
-            root->mouseWheelScrolled(-1, {40 + container->getPosition().x, 70 + container->getPosition().y});
-            root->mouseWheelScrolled(-1, {40 + container->getPosition().x, 70 + container->getPosition().y});
+            root->scrolled(-1, {40 + container->getPosition().x, 70 + container->getPosition().y}, false);
+            root->scrolled(-1, {40 + container->getPosition().x, 70 + container->getPosition().y}, false);
 
             mousePressed({40, 52});
             REQUIRE(listView->getSelectedItemIndex() == 4);
@@ -694,6 +707,43 @@ TEST_CASE("[ListView]")
             mousePressed({40, 110});
             mouseReleased({40, 110});
             REQUIRE(listView->getSelectedItemIndex() == -1);
+        }
+
+        SECTION("Resizing column")
+        {
+            listView->setHeaderHeight(20);
+            listView->addColumn("Col 1", 50);
+            listView->addColumn("Col 2", 100);
+
+            listView->setHorizontalScrollbarValue(10);
+            listView->getRenderer()->setBorders({2});
+            listView->setSeparatorWidth(1);
+
+            SECTION("Resizing allowed")
+            {
+                listView->setResizableColumns(true);
+
+                mouseMoved({52, 35});
+                mousePressed({52, 35});
+                mouseMoved({62, 35});
+                mouseReleased({62, 35});
+
+                REQUIRE(listView->getColumnWidth(0) == 60);
+                REQUIRE(listView->getColumnWidth(1) == 100);
+            }
+
+            SECTION("Resizing blocked")
+            {
+                listView->setResizableColumns(false);
+
+                mouseMoved({52, 35});
+                mousePressed({52, 35});
+                mouseMoved({62, 35});
+                mouseReleased({62, 35});
+
+                REQUIRE(listView->getColumnWidth(0) == 50);
+                REQUIRE(listView->getColumnWidth(1) == 100);
+            }
         }
     }
 
@@ -791,6 +841,36 @@ TEST_CASE("[ListView]")
             REQUIRE(renderer->getScrollbar()->propertyValuePairs.size() == 2);
             REQUIRE(renderer->getScrollbar()->propertyValuePairs["TrackColor"].getColor() == tgui::Color::Red);
             REQUIRE(renderer->getScrollbar()->propertyValuePairs["ThumbColor"].getColor() == tgui::Color::Blue);
+        }
+
+        SECTION("textured")
+        {
+            tgui::Texture textureHeaderBackground("resources/Black.png", {48, 154, 75, 25}, {16, 16, 16, 16});
+            tgui::Texture textureBackground("resources/Black.png", {0, 154, 48, 48}, {16, 16, 16, 16});
+
+            SECTION("set serialized property")
+            {
+                REQUIRE_NOTHROW(renderer->setProperty("TextureHeaderBackground", tgui::Serializer::serialize(textureHeaderBackground)));
+                REQUIRE_NOTHROW(renderer->setProperty("TextureBackground", tgui::Serializer::serialize(textureBackground)));
+            }
+
+            SECTION("set object property")
+            {
+                REQUIRE_NOTHROW(renderer->setProperty("TextureHeaderBackground", textureHeaderBackground));
+                REQUIRE_NOTHROW(renderer->setProperty("TextureBackground", textureBackground));
+            }
+
+            SECTION("functions")
+            {
+                renderer->setTextureHeaderBackground(textureHeaderBackground);
+                renderer->setTextureBackground(textureBackground);
+            }
+
+            REQUIRE(renderer->getProperty("TextureHeaderBackground").getTexture().getData() != nullptr);
+            REQUIRE(renderer->getProperty("TextureBackground").getTexture().getData() != nullptr);
+
+            REQUIRE(renderer->getTextureHeaderBackground().getData() == textureHeaderBackground.getData());
+            REQUIRE(renderer->getTextureBackground().getData() == textureBackground.getData());
         }
     }
 

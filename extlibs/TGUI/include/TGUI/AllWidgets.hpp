@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -29,7 +29,6 @@
 
 #include <TGUI/Widgets/BitmapButton.hpp>
 #include <TGUI/Widgets/Button.hpp>
-#include <TGUI/Widgets/Canvas.hpp>
 #include <TGUI/Widgets/ChatBox.hpp>
 #include <TGUI/Widgets/CheckBox.hpp>
 #include <TGUI/Widgets/ChildWindow.hpp>
@@ -48,12 +47,14 @@
 #include <TGUI/Widgets/ListView.hpp>
 #include <TGUI/Widgets/MenuBar.hpp>
 #include <TGUI/Widgets/MessageBox.hpp>
+#include <TGUI/Widgets/PanelListBox.hpp>
 #include <TGUI/Widgets/Panel.hpp>
 #include <TGUI/Widgets/Picture.hpp>
 #include <TGUI/Widgets/ProgressBar.hpp>
 #include <TGUI/Widgets/RadioButton.hpp>
 #include <TGUI/Widgets/RadioButtonGroup.hpp>
 #include <TGUI/Widgets/RangeSlider.hpp>
+#include <TGUI/Widgets/RichTextLabel.hpp>
 #include <TGUI/Widgets/ScrollablePanel.hpp>
 #include <TGUI/Widgets/Scrollbar.hpp>
 #include <TGUI/Widgets/SeparatorLine.hpp>

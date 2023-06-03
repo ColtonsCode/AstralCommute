@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -22,12 +22,12 @@
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "Tests.hpp"
-#include <TGUI/Widgets/EditBox.hpp>
-
+#include <TGUI/Config.hpp>
 #ifdef TGUI_SYSTEM_WINDOWS
-    #include <TGUI/WindowsInclude.hpp>
+    #include <TGUI/extlibs/IncludeWindows.hpp>
 #endif
+
+#include "Tests.hpp"
 
 TEST_CASE("[EditBox]")
 {
@@ -37,13 +37,13 @@ TEST_CASE("[EditBox]")
     SECTION("Signals")
     {
         editBox->onTextChange([](){});
-        editBox->onTextChange([](tgui::String){});
+        editBox->onTextChange([](const tgui::String&){});
 
         editBox->onReturnKeyPress([](){});
-        editBox->onReturnKeyPress([](tgui::String){});
+        editBox->onReturnKeyPress([](const tgui::String&){});
 
         editBox->onReturnOrUnfocus([](){});
-        editBox->onReturnOrUnfocus([](tgui::String){});
+        editBox->onReturnOrUnfocus([](const tgui::String&){});
     }
 
     SECTION("WidgetType")
@@ -393,7 +393,12 @@ TEST_CASE("[EditBox]")
             REQUIRE(textChangedCount == 6);
 
             editBox->selectText();
+
+#ifdef TGUI_SYSTEM_MACOS
+            keyEvent.system = true;
+#else
             keyEvent.control = true;
+#endif
 
             keyEvent.code = tgui::Event::KeyboardKey::C;
             editBox->keyPressed(keyEvent);
@@ -415,7 +420,7 @@ TEST_CASE("[EditBox]")
         {
             unsigned int count = 0;
             tgui::String expectedText = "";
-            editBox->onReturnKeyPress([&](tgui::String text){ REQUIRE(text == expectedText); count++; });
+            editBox->onReturnKeyPress([&](const tgui::String& text){ REQUIRE(text == expectedText); count++; });
 
             keyEvent.code = tgui::Event::KeyboardKey::Enter;
             editBox->keyPressed(keyEvent);
@@ -786,11 +791,16 @@ TEST_CASE("[EditBox]")
         SECTION("ctrl+alt+A should not act as ctrl+A (https://github.com/texus/TGUI/issues/43)")
         {
             tgui::Event::KeyEvent event;
-            event.control = true;
+            event.code    = tgui::Event::KeyboardKey::A;
             event.alt     = false;
             event.shift   = false;
+#ifdef TGUI_SYSTEM_MACOS
+            event.control = false;
+            event.system  = true;
+#else
+            event.control = true;
             event.system  = false;
-            event.code    = tgui::Event::KeyboardKey::A;
+#endif
 
             editBox->setText("Test");
             editBox->keyPressed(event);

@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -29,6 +29,10 @@
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char Panel::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     Panel::Panel(const char* typeName, bool initRenderer) :
@@ -45,7 +49,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Panel::Ptr Panel::create(Layout2d size)
+    Panel::Ptr Panel::create(const Layout2d& size)
     {
         auto panel = std::make_shared<Panel>();
         panel->setSize(size);
@@ -54,7 +58,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Panel::Ptr Panel::copy(Panel::ConstPtr panel)
+    Panel::Ptr Panel::copy(const Panel::ConstPtr& panel)
     {
         if (panel)
             return std::static_pointer_cast<Panel>(panel->clone());
@@ -81,13 +85,6 @@ namespace tgui
     PanelRenderer* Panel::getRenderer()
     {
         return aurora::downcast<PanelRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    const PanelRenderer* Panel::getRenderer() const
-    {
-        return aurora::downcast<const PanelRenderer*>(Widget::getRenderer());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -127,11 +124,11 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Panel::leftMousePressed(Vector2f pos)
+    bool Panel::leftMousePressed(Vector2f pos)
     {
         onMousePress.emit(this, pos - getPosition());
 
-        Container::leftMousePressed(pos);
+        return Container::leftMousePressed(pos);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -221,31 +218,31 @@ namespace tgui
 
     void Panel::rendererChanged(const String& property)
     {
-        if (property == "Borders")
+        if (property == U"Borders")
         {
             m_bordersCached = getSharedRenderer()->getBorders();
             setSize(m_size);
         }
 
-        else if (property == "RoundedBorderRadius")
+        else if (property == U"RoundedBorderRadius")
         {
             m_roundedBorderRadius = getSharedRenderer()->getRoundedBorderRadius();
         }
-        else if (property == "BorderColor")
+        else if (property == U"BorderColor")
         {
             m_borderColorCached = getSharedRenderer()->getBorderColor();
         }
-        else if (property == "BackgroundColor")
+        else if (property == U"BackgroundColor")
         {
             m_backgroundColorCached = getSharedRenderer()->getBackgroundColor();
         }
-        else if (property == "TextureBackground")
+        else if (property == U"TextureBackground")
         {
             m_spriteBackground.setTexture(getSharedRenderer()->getTextureBackground());
         }
-        else if ((property == "Opacity") || (property == "OpacityDisabled"))
+        else if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
-            Container::rendererChanged(property);
+            Group::rendererChanged(property);
             m_spriteBackground.setOpacity(m_opacityCached);
         }
         else
@@ -256,7 +253,7 @@ namespace tgui
 
     bool Panel::updateTime(Duration elapsedTime)
     {
-        const bool screenRefreshRequired = Widget::updateTime(elapsedTime);
+        const bool screenRefreshRequired = Group::updateTime(elapsedTime);
 
         if (m_animationTimeElapsed >= getDoubleClickTime())
         {
@@ -269,7 +266,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Panel::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void Panel::draw(BackendRenderTarget& target, RenderStates states) const
     {
         const Vector2f innerSize = {getSize().x - m_bordersCached.getLeft() - m_bordersCached.getRight(),
                                     getSize().y - m_bordersCached.getTop() - m_bordersCached.getBottom()};
@@ -302,8 +299,15 @@ namespace tgui
 
         // Draw the child widgets
         target.addClippingLayer(states, {{}, contentSize});
-        Container::draw(target, states);
+        Container::draw(target, states); // NOLINT(bugprone-parent-virtual-call)
         target.removeClippingLayer();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr Panel::clone() const
+    {
+        return std::make_shared<Panel>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

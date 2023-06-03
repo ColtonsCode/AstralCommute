@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -34,13 +34,11 @@ namespace tgui
     {
         {"BitmapButton", std::make_shared<BitmapButton>},
         {"Button", std::make_shared<Button>},
-#if TGUI_HAS_BACKEND_SFML
-        {"Canvas", std::make_shared<CanvasSFML>},
-#endif
         {"ChatBox", std::make_shared<ChatBox>},
         {"CheckBox", std::make_shared<CheckBox>},
         {"ChildWindow", std::make_shared<ChildWindow>},
         {"ClickableWidget", std::make_shared<ClickableWidget>},
+        {"ColorPicker", std::make_shared<ColorPicker>},
         {"ComboBox", std::make_shared<ComboBox>},
         {"EditBox", std::make_shared<EditBox>},
         {"FileDialog", std::make_shared<FileDialog>},
@@ -55,11 +53,13 @@ namespace tgui
         {"MenuBar", std::make_shared<MenuBar>},
         {"MessageBox", std::make_shared<MessageBox>},
         {"Panel", std::make_shared<Panel>},
+        {"PanelListBox", std::make_shared<PanelListBox>},
         {"Picture", std::make_shared<Picture>},
         {"ProgressBar", std::make_shared<ProgressBar>},
         {"RadioButton", std::make_shared<RadioButton>},
         {"RadioButtonGroup", std::make_shared<RadioButtonGroup>},
         {"RangeSlider", std::make_shared<RangeSlider>},
+        {"RichTextLabel", std::make_shared<RichTextLabel>},
         {"ScrollablePanel", std::make_shared<ScrollablePanel>},
         {"Scrollbar", std::make_shared<Scrollbar>},
         {"SeparatorLine", std::make_shared<SeparatorLine>},
@@ -86,6 +86,18 @@ namespace tgui
     const std::function<Widget::Ptr()>& WidgetFactory::getConstructFunction(const String& type)
     {
         return m_constructFunctions[type];
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    std::vector<String> WidgetFactory::getWidgetTypes()
+    {
+        std::vector<String> types;
+        types.reserve(m_constructFunctions.size());
+        for (const auto& pair : m_constructFunctions)
+            types.push_back(pair.first);
+
+        return types;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,10 +25,12 @@
 
 #include <TGUI/Loading/ThemeLoader.hpp>
 #include <TGUI/Loading/Deserializer.hpp>
-#include <TGUI/Global.hpp>
+#include <TGUI/Loading/WidgetFactory.hpp>
 
-#include <sstream>
-#include <fstream>
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <sstream>
+    #include <fstream>
+#endif
 
 // Ignore warning "C4503: decorated name length exceeded, name was truncated" in Visual Studio
 #if defined _MSC_VER
@@ -42,6 +44,7 @@ namespace tgui
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     std::map<String, std::map<String, std::map<String, String>>> DefaultThemeLoader::m_propertiesCache;
+    std::map<String, std::map<String, String>> DefaultThemeLoader::m_globalPropertiesCache;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -51,24 +54,34 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    std::map<String, String> BaseThemeLoader::getGlobalProperties(const String&)
+    {
+        return {};
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     void BaseThemeLoader::injectThemePath(const std::unique_ptr<DataIO::Node>& node, const String& path) const
     {
         for (const auto& pair : node->propertyValuePairs)
         {
-            if (((pair.first.size() >= 7) && (pair.first.substr(0, 7) == U"Texture")) || (pair.first == U"Font") || (pair.first == U"Image"))
+            if (((pair.first.size() >= 7) && (pair.first.substr(0, 7) == U"Texture")) || (pair.first == U"Font") || (pair.first == U"Image") || (pair.first == U"Icon"))
             {
-                if (pair.second->value.empty() || pair.second->value.equalIgnoreCase(U"none") || pair.second->value.equalIgnoreCase(U"null") || pair.second->value.equalIgnoreCase(U"nullptr"))
+                if (pair.second->value.empty() || viewEqualIgnoreCase(pair.second->value, U"none") || viewEqualIgnoreCase(pair.second->value, U"null") || viewEqualIgnoreCase(pair.second->value, U"nullptr"))
                     continue;
 
-                // Insert the path into the filename unless the filename is already an absolute path.
+                // Insert the path into the filename unless the filename is already an absolute path or if the data is embedded.
                 // We can't just deserialize the value to get rid of the quotes as it may contain things behind the filename.
                 if (pair.second->value[0] != '"')
                 {
-                #ifdef TGUI_SYSTEM_WINDOWS
+                    if (pair.second->value.starts_with(U"data:"))
+                        continue;
+
+#ifdef TGUI_SYSTEM_WINDOWS
                     if ((pair.second->value[0] != '/') && (pair.second->value[0] != '\\') && ((pair.second->value.size() <= 1) || (pair.second->value[1] != ':')))
-                #else
+#else
                     if (pair.second->value[0] != '/')
-                #endif
+#endif
                         pair.second->value = path + pair.second->value;
                 }
                 else // The filename is between quotes
@@ -76,11 +89,14 @@ namespace tgui
                     if (pair.second->value.size() <= 1)
                         continue;
 
-                #ifdef TGUI_SYSTEM_WINDOWS
+                    if ((pair.second->value.size() >= 7) && (pair.second->value.substr(1, 5) == U"data:"))
+                        continue;
+
+#ifdef TGUI_SYSTEM_WINDOWS
                     if ((pair.second->value[1] != '/') && (pair.second->value[1] != '\\') && ((pair.second->value.size() <= 2) || (pair.second->value[2] != ':')))
-                #else
+#else
                     if (pair.second->value[1] != '/')
-                #endif
+#endif
                         pair.second->value = '"' + path + pair.second->value.substr(1);
                 }
             }
@@ -92,7 +108,9 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void BaseThemeLoader::resolveReferences(std::map<String, std::reference_wrapper<const std::unique_ptr<DataIO::Node>>>& sections, const std::unique_ptr<DataIO::Node>& node) const
+    void BaseThemeLoader::resolveReferences(std::map<String, std::reference_wrapper<const std::unique_ptr<DataIO::Node>>>& sections,
+                                            const std::map<String, String>& globalProperties,
+                                            const std::unique_ptr<DataIO::Node>& node) const
     {
         for (const auto& pair : node->propertyValuePairs)
         {
@@ -102,10 +120,20 @@ namespace tgui
                 const String name = Deserializer::deserialize(ObjectConverter::Type::String, pair.second->value.substr(1)).getString();
                 const auto sectionsIt = sections.find(name);
                 if (sectionsIt == sections.end())
-                    throw Exception{"Undefined reference to '" + name + "' encountered."};
+                {
+                    // We couldn't find a sections, so check if this is a reference to a global value
+                    const auto globalPropertyIt = globalProperties.find(name);
+                    if (globalPropertyIt != globalProperties.end())
+                    {
+                        pair.second->value = globalPropertyIt->second;
+                        continue;
+                    }
+
+                    throw Exception{U"Undefined reference to '" + name + U"' encountered."};
+                }
 
                 // Resolve references recursively
-                resolveReferences(sections, sectionsIt->second);
+                resolveReferences(sections, globalProperties, sectionsIt->second);
 
                 // Make a copy of the section
                 std::stringstream ss;
@@ -115,7 +143,7 @@ namespace tgui
         }
 
         for (const auto& child : node->children)
-            resolveReferences(sections, child);
+            resolveReferences(sections, globalProperties, child);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -123,15 +151,15 @@ namespace tgui
 
     void DefaultThemeLoader::flushCache(const String& filename)
     {
-        if (filename != "")
+        if (filename != U"")
         {
-            auto propertiesCacheIt = m_propertiesCache.find(filename);
-            if (propertiesCacheIt != m_propertiesCache.end())
-                m_propertiesCache.erase(propertiesCacheIt);
+            m_propertiesCache.erase(filename);
+            m_globalPropertiesCache.erase(filename);
         }
         else
         {
             m_propertiesCache.clear();
+            m_globalPropertiesCache.clear();
         }
     }
 
@@ -139,7 +167,7 @@ namespace tgui
 
     void DefaultThemeLoader::preload(const String& filename)
     {
-        if (filename == "")
+        if (filename == U"")
             return;
 
         // Load the file when not already in cache
@@ -147,10 +175,10 @@ namespace tgui
         {
             std::unique_ptr<DataIO::Node> root = readFile(filename);
             if (!root)
-                throw Exception{"DefaultThemeLoader::preload failed to load file, readFile returned nullptr."};
+                throw Exception{U"DefaultThemeLoader::preload failed to load file, readFile returned nullptr."};
 
-            if (root->propertyValuePairs.size() != 0)
-                throw Exception{"Unexpected result while loading theme file '" + filename + "'. Root property-value pair found."};
+            for (const auto& pair : root->propertyValuePairs)
+                m_globalPropertiesCache[filename][pair.first] = pair.second->value;
 
             // Get a list of section names and map them to their nodes (needed for resolving references)
             std::map<String, std::reference_wrapper<const std::unique_ptr<DataIO::Node>>> sections;
@@ -161,7 +189,11 @@ namespace tgui
             }
 
             // Resolve references to sections
-            resolveReferences(sections, root);
+            resolveReferences(sections, m_globalPropertiesCache[filename], root);
+
+            // Create empty sections for all widget types
+            for (const auto& widgetType : WidgetFactory::getWidgetTypes())
+                m_propertiesCache[filename][widgetType] = {};
 
             // Cache all propery value pairs
             for (const auto& section : sections)
@@ -183,6 +215,14 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    std::map<String, String> DefaultThemeLoader::getGlobalProperties(const String& filename)
+    {
+        preload(filename);
+        return m_globalPropertiesCache[filename];
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     const std::map<String, String>& DefaultThemeLoader::load(const String& filename, const String& section)
     {
         preload(filename);
@@ -192,7 +232,7 @@ namespace tgui
             return m_propertiesCache[""][section];
 
         if (m_propertiesCache[filename].find(section) == m_propertiesCache[filename].end())
-            throw Exception{"No section '" + section + "' was found in file '" + filename + "'."};
+            throw Exception{U"No section '" + section + U"' was found in file '" + filename + "'."};
 
         return m_propertiesCache[filename][section];
     }
@@ -227,10 +267,10 @@ namespace tgui
         std::size_t fileSize;
         auto fileContents = readFileToMemory(fullFilename, fileSize);
         if (!fileContents)
-            throw Exception{"Failed to open theme file '" + fullFilename + "'."};
+            throw Exception{U"Failed to open theme file '" + fullFilename + U"'."};
 
         std::stringstream stream;
-        stream.write(reinterpret_cast<char*>(fileContents.get()), fileSize);
+        stream.write(reinterpret_cast<char*>(fileContents.get()), static_cast<std::streamsize>(fileSize));
 
         std::unique_ptr<DataIO::Node> root = DataIO::parse(stream);
 

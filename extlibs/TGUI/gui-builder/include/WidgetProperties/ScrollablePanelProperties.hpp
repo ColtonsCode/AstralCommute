@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,13 +27,12 @@
 #define TGUI_GUI_BUILDER_SCROLLABLE_PANEL_PROPERTIES_HPP
 
 #include "PanelProperties.hpp"
-#include <TGUI/Widgets/ScrollablePanel.hpp>
 
 struct ScrollablePanelProperties : PanelProperties
 {
     // TODO: Scrollbar renderer
 
-    void updateProperty(tgui::Widget::Ptr widget, const tgui::String& property, const tgui::String& value) const override
+    void updateProperty(const tgui::Widget::Ptr& widget, const tgui::String& property, const tgui::String& value) const override
     {
         auto panel = widget->cast<tgui::ScrollablePanel>();
         if (property == "VerticalScrollbarPolicy")
@@ -52,7 +51,7 @@ struct ScrollablePanelProperties : PanelProperties
             WidgetProperties::updateProperty(widget, property, value);
     }
 
-    PropertyValueMapPair initProperties(tgui::Widget::Ptr widget) const override
+    TGUI_NODISCARD PropertyValueMapPair initProperties(const tgui::Widget::Ptr& widget) const override
     {
         auto pair = PanelProperties::initProperties(widget);
         auto panel = widget->cast<tgui::ScrollablePanel>();

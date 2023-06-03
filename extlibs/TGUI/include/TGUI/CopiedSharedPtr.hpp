@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,11 +27,16 @@
 #define TGUI_COPIED_SHARED_PTR_HPP
 
 
-#include <memory>
+#include <TGUI/Config.hpp>
+
+
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <memory>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -87,7 +92,7 @@ namespace tgui
             return m_WidgetPtr.get();
         }
 
-        WidgetType* get() const noexcept
+        TGUI_NODISCARD WidgetType* get() const noexcept
         {
             return m_WidgetPtr.get();
         }

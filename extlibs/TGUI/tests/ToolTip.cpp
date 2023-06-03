@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,15 +23,11 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/ToolTip.hpp>
-#include <TGUI/TextureManager.hpp>
-#include <TGUI/Widgets/Label.hpp>
-#include <TGUI/Widgets/Panel.hpp>
 
 TEST_CASE("[ToolTip]")
 {
-    tgui::Duration oldInitialDelay = tgui::ToolTip::getInitialDelay();
-    tgui::Vector2f oldDistanceToMouse = tgui::ToolTip::getDistanceToMouse();
+    const tgui::Duration oldInitialDelay = tgui::ToolTip::getInitialDelay();
+    const tgui::Vector2f oldDistanceToMouse = tgui::ToolTip::getDistanceToMouse();
 
     SECTION("InitialDelay")
     {
@@ -43,6 +39,15 @@ TEST_CASE("[ToolTip]")
     {
         tgui::ToolTip::setDistanceToMouse({5, 5});
         REQUIRE(tgui::ToolTip::getDistanceToMouse() == tgui::Vector2f(5, 5));
+    }
+
+    SECTION("ShowOnDisabledWidget")
+    {
+        REQUIRE(tgui::ToolTip::getShowOnDisabledWidget());
+        tgui::ToolTip::setShowOnDisabledWidget(false);
+        REQUIRE(!tgui::ToolTip::getShowOnDisabledWidget());
+        tgui::ToolTip::setShowOnDisabledWidget(true);
+        REQUIRE(tgui::ToolTip::getShowOnDisabledWidget());
     }
 
     SECTION("Setting tool tip of widget")

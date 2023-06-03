@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -34,7 +34,7 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
     class MenuBarMenuPlaceholder;
 
@@ -46,8 +46,11 @@ namespace tgui
     {
     public:
 
-        typedef std::shared_ptr<MenuBar> Ptr; //!< Shared widget pointer
-        typedef std::shared_ptr<const MenuBar> ConstPtr; //!< Shared constant widget pointer
+        using Ptr = std::shared_ptr<MenuBar>; //!< Shared widget pointer
+        using ConstPtr = std::shared_ptr<const MenuBar>; //!< Shared constant widget pointer
+
+        static constexpr const char StaticWidgetType[] = "MenuBar"; //!< Type name of the widget
+
 
         /// @brief Used for return value of getMenus
         struct GetMenusElement
@@ -74,7 +77,7 @@ namespace tgui
         /// @param initRenderer Should the renderer be initialized? Should be true unless a derived class initializes it.
         /// @see create
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        MenuBar(const char* typeName = "MenuBar", bool initRenderer = true);
+        MenuBar(const char* typeName = StaticWidgetType, bool initRenderer = true);
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -85,7 +88,7 @@ namespace tgui
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // Move constructor
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        MenuBar(MenuBar&& other);
+        MenuBar(MenuBar&& other) noexcept;
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // Copy assignment operator
@@ -95,7 +98,7 @@ namespace tgui
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // Move assignment operator
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        MenuBar& operator=(MenuBar&& other);
+        MenuBar& operator=(MenuBar&& other) noexcept;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -104,7 +107,7 @@ namespace tgui
         /// @return The new menu bar
         ///
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        static MenuBar::Ptr create();
+        TGUI_NODISCARD static MenuBar::Ptr create();
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -115,23 +118,22 @@ namespace tgui
         /// @return The new menu bar
         ///
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        static MenuBar::Ptr copy(MenuBar::ConstPtr menuBar);
+        TGUI_NODISCARD static MenuBar::Ptr copy(const MenuBar::ConstPtr& menuBar);
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @brief Returns the renderer, which gives access to functions that determine how the widget is displayed
         /// @return Temporary pointer to the renderer that may be shared with other widgets using the same renderer
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        MenuBarRenderer* getSharedRenderer();
-        const MenuBarRenderer* getSharedRenderer() const;
+        TGUI_NODISCARD MenuBarRenderer* getSharedRenderer() override;
+        TGUI_NODISCARD const MenuBarRenderer* getSharedRenderer() const override;
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @brief Returns the renderer, which gives access to functions that determine how the widget is displayed
         /// @return Temporary pointer to the renderer
         /// @warning After calling this function, the widget has its own copy of the renderer and it will no longer be shared.
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        MenuBarRenderer* getRenderer();
-        const MenuBarRenderer* getRenderer() const;
+        TGUI_NODISCARD MenuBarRenderer* getRenderer() override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -282,6 +284,25 @@ namespace tgui
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        /// @brief Changes the text of an existing menu item
+        ///
+        /// @param menu  Hierarchy of the menu items, starting with the menu and ending with menu item that is to be renamed
+        /// @param text  The new text written on this menu item
+        ///
+        /// @return True when the menu item was renamed, false when the menu item was not found
+        ///
+        /// @code
+        /// menuBar->addMenu("File");
+        /// menuBar->addMenuItem("Load");
+        /// menuBar->changeMenuItem({"File", "Load"}, "Load file");
+        /// @endcode
+        ///
+        /// This function can also be used to rename menus, by passing a hierarchy with only one element.
+        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        bool changeMenuItem(const std::vector<String>& hierarchy, const String& text);
+
+
+        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @brief Removes all menus
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         void removeAllMenus();
@@ -367,7 +388,7 @@ namespace tgui
         /// @param menu  The name of the menu to check
         /// @return True if the menu is enabled, false if it was disabled or when the menu did not exist
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        bool getMenuEnabled(const String& menu) const;
+        TGUI_NODISCARD bool getMenuEnabled(const String& menu) const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -395,7 +416,7 @@ namespace tgui
         /// @param menuItem  The name of the menu item to check
         /// @return True if the menu item is enabled, false if it was disabled or when the menu or menuItem did not exist
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        bool getMenuItemEnabled(const String& menu, const String& menuItem) const;
+        TGUI_NODISCARD bool getMenuItemEnabled(const String& menu, const String& menuItem) const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -403,14 +424,7 @@ namespace tgui
         /// @param hierarchy  Hierarchy of menu items, starting with the menu and ending with the menu item to check
         /// @return True if the menu item is enabled, false if it was disabled or when the hierarchy was incorrect
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        bool getMenuItemEnabled(const std::vector<String>& hierarchy) const;
-
-
-        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        /// @brief Changes the character size of the text
-        /// @param size  The new size of the text.
-        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        void setTextSize(unsigned int size) override;
+        TGUI_NODISCARD bool getMenuItemEnabled(const std::vector<String>& hierarchy) const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -433,7 +447,7 @@ namespace tgui
         /// @see setMinimumSubMenuWidth
         ///
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        float getMinimumSubMenuWidth() const;
+        TGUI_NODISCARD float getMinimumSubMenuWidth() const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -451,7 +465,7 @@ namespace tgui
         /// @return Do menus open above the bar instead of below like it does by default?
         ///
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        bool getInvertedMenuDirection() const;
+        TGUI_NODISCARD bool getInvertedMenuDirection() const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -459,7 +473,7 @@ namespace tgui
         /// @brief Returns the menus and their menu items, including submenus
         /// @return List of menus
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        std::vector<GetMenusElement> getMenus() const;
+        TGUI_NODISCARD std::vector<GetMenusElement> getMenus() const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -474,12 +488,12 @@ namespace tgui
         /// @return Is the mouse on top of the widget?
         ///
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        bool isMouseOnWidget(Vector2f pos) const override;
+        TGUI_NODISCARD bool isMouseOnWidget(Vector2f pos) const override;
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @internal
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        void leftMousePressed(Vector2f pos) override;
+        bool leftMousePressed(Vector2f pos) override;
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @internal
@@ -499,7 +513,7 @@ namespace tgui
         /// @param states Current render states
         ///
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        void draw(BackendRenderTargetBase& target, RenderStates states) const override;
+        void draw(BackendRenderTarget& target, RenderStates states) const override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -514,7 +528,7 @@ namespace tgui
         ///
         /// @throw Exception when the name does not match any signal
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Signal& getSignal(String signalName) override;
+        TGUI_NODISCARD Signal& getSignal(String signalName) override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -529,7 +543,7 @@ namespace tgui
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @brief Saves the widget as a tree node in order to save it to a file
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        std::unique_ptr<DataIO::Node> save(SavingRenderersMap& renderers) const override;
+        TGUI_NODISCARD std::unique_ptr<DataIO::Node> save(SavingRenderersMap& renderers) const override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -539,12 +553,15 @@ namespace tgui
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        /// @brief Called when the text size is changed (either by setTextSize or via the renderer)
+        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        void updateTextSize() override;
+
+
+        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // Makes a copy of the widget
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Widget::Ptr clone() const override
-        {
-            return std::make_shared<MenuBar>(*this);
-        }
+        TGUI_NODISCARD Widget::Ptr clone() const override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -561,16 +578,20 @@ namespace tgui
         /// @internal
         /// Recursively search for the menu containing the menu item specified in the hierarchy, creating the hierarchy if requested.
         /// The initial call to this function must pass "parentIndex = 0" and "menus = m_menus".
-        Menu* findMenu(const std::vector<String>& hierarchy, unsigned int parentIndex, std::vector<Menu>& menus, bool createParents);
+        TGUI_NODISCARD Menu* findMenu(const std::vector<String>& hierarchy, unsigned int parentIndex, std::vector<Menu>& menus, bool createParents);
 
         /// @internal
         /// Recursively search for the menu containing the menu item specified in the hierarchy.
         /// The initial call to this function must pass "parentIndex = 0" and "menus = m_menus".
-        const Menu* findMenu(const std::vector<String>& hierarchy, unsigned int parentIndex, const std::vector<Menu>& menus) const;
+        TGUI_NODISCARD const Menu* findMenu(const std::vector<String>& hierarchy, unsigned int parentIndex, const std::vector<Menu>& menus) const;
 
         /// @internal
-        /// Search for the menu item specified in the hierarchy.
-        const Menu* findMenuItem(const std::vector<String>& hierarchy) const;
+        /// Search for the menu item specified in the hierarchy and return a pointer to it.
+        TGUI_NODISCARD Menu* findMenuItem(const std::vector<String>& hierarchy);
+
+        /// @internal
+        /// Search for the menu item specified in the hierarchy and return a read-only pointer to it.
+        TGUI_NODISCARD const Menu* findMenuItem(const std::vector<String>& hierarchy) const;
 
         /// @internal
         /// Helper function to load the menus when the menu bar is being loaded from a text file
@@ -597,32 +618,32 @@ namespace tgui
 
         /// @internal
         /// Calculate the width that is needed for the menu to fit all menu items
-        float calculateMenuWidth(const Menu& menu) const;
+        TGUI_NODISCARD float calculateMenuWidth(const Menu& menu) const;
 
         /// @internal
         /// Returns the height of the menu item or the separator
-        float getMenuItemHeight(const Menu& menuItem) const;
+        TGUI_NODISCARD float getMenuItemHeight(const Menu& menuItem) const;
 
         /// @internal
         /// Calculates the height of all menu items and separators in a menu
-        float calculateOpenMenuHeight(const std::vector<Menu>& menuItems) const;
+        TGUI_NODISCARD float calculateOpenMenuHeight(const std::vector<Menu>& menuItems) const;
 
         /// @internal
-        Vector2f calculateSubmenuOffset(const Menu& menu, float globalLeftPos, float menuWidth, float subMenuWidth, bool& openSubMenuToRight) const;
+        TGUI_NODISCARD Vector2f calculateSubmenuOffset(const Menu& menu, float globalLeftPos, float menuWidth, float subMenuWidth, bool& openSubMenuToRight) const;
 
         /// @internal
-        bool isMouseOnTopOfMenu(Vector2f menuPos, Vector2f mousePos, bool openSubMenuToRight, const Menu& menu, float menuWidth) const;
+        TGUI_NODISCARD bool isMouseOnTopOfMenu(Vector2f menuPos, Vector2f mousePos, bool openSubMenuToRight, const Menu& menu, float menuWidth) const;
 
         /// @internal
-        bool findMenuItemBelowMouse(Vector2f menuPos, Vector2f mousePos, bool openSubMenuToRight, Menu& menu, float menuWidth, Menu** resultMenu, int* resultSelectedMenuItem);
+        TGUI_NODISCARD bool findMenuItemBelowMouse(Vector2f menuPos, Vector2f mousePos, bool openSubMenuToRight, Menu& menu, float menuWidth, Menu** resultMenu, std::size_t* resultSelectedMenuItem);
 
         /// @internal
         /// Draw the backgrounds and text of the menu names on top of the bar itself
-        void drawMenusOnBar(BackendRenderTargetBase& target, RenderStates states) const;
+        void drawMenusOnBar(BackendRenderTarget& target, RenderStates states) const;
 
         /// @internal
         /// Draw an open menu and recusively draw submenus when open
-        void drawMenu(BackendRenderTargetBase& target, RenderStates states, const Menu& menu, float menuWidth, float globalLeftPos, bool openSubMenuToRight) const;
+        void drawMenu(BackendRenderTarget& target, RenderStates states, const Menu& menu, float menuWidth, float globalLeftPos, bool openSubMenuToRight) const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -631,7 +652,7 @@ namespace tgui
         /// @param pos  Mouse position
         /// @return True if mouse on menu, false otherwise.
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        bool isMouseOnOpenMenu(Vector2f pos) const;
+        TGUI_NODISCARD bool isMouseOnOpenMenu(Vector2f pos) const;
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @internal
@@ -652,7 +673,7 @@ namespace tgui
         /// @param target Render target to draw to
         /// @param states Current render states
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        void drawOpenMenu(BackendRenderTargetBase& target, RenderStates states) const;
+        void drawOpenMenu(BackendRenderTarget& target, RenderStates states) const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -726,7 +747,7 @@ namespace tgui
         ///
         /// This MenuBarMenuPlaceholder widget will try to fit the entire screen to absorb all mouse events.
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Vector2f getFullSize() const override;
+        TGUI_NODISCARD Vector2f getFullSize() const override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -736,14 +757,14 @@ namespace tgui
         ///
         /// The offset equals -getPosition() for MenuBarMenuPlaceholder because it tries to fill the entire screen.
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Vector2f getWidgetOffset() const override;
+        TGUI_NODISCARD Vector2f getWidgetOffset() const override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @brief Returns whether the mouse position (which is relative to the parent widget) lies on top of an open menu
         /// @return Is the mouse on top of an open menu from the menu bar?
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        bool isMouseOnWidget(Vector2f pos) const override;
+        TGUI_NODISCARD bool isMouseOnWidget(Vector2f pos) const override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -752,7 +773,7 @@ namespace tgui
         /// @param target Render target to draw to
         /// @param states Current render states
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        void draw(BackendRenderTargetBase& target, RenderStates states) const override;
+        void draw(BackendRenderTarget& target, RenderStates states) const override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -769,7 +790,7 @@ namespace tgui
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // Makes a copy of the widget
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Widget::Ptr clone() const override;
+        TGUI_NODISCARD Widget::Ptr clone() const override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

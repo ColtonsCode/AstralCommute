@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -62,7 +62,7 @@ namespace tgui
     void BoxLayoutRatios::insert(std::size_t index, const Widget::Ptr& widget, float ratio, const String& widgetName)
     {
         if (index < m_ratios.size())
-            m_ratios.insert(m_ratios.begin() + index, ratio);
+            m_ratios.insert(m_ratios.begin() + static_cast<std::ptrdiff_t>(index), ratio);
         else
             m_ratios.push_back(ratio);
 
@@ -74,7 +74,7 @@ namespace tgui
     bool BoxLayoutRatios::remove(std::size_t index)
     {
         if (index < m_ratios.size())
-            m_ratios.erase(m_ratios.begin() + index);
+            m_ratios.erase(m_ratios.begin() + static_cast<std::ptrdiff_t>(index));
 
         return BoxLayout::remove(index);
     }
@@ -103,7 +103,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    bool BoxLayoutRatios::setRatio(Widget::Ptr widget, float ratio)
+    bool BoxLayoutRatios::setRatio(const Widget::Ptr& widget, float ratio)
     {
         for (std::size_t i = 0; i < m_widgets.size(); ++i)
         {
@@ -128,7 +128,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    float BoxLayoutRatios::getRatio(Widget::Ptr widget) const
+    float BoxLayoutRatios::getRatio(const Widget::Ptr& widget) const
     {
         for (std::size_t i = 0; i < m_widgets.size(); ++i)
         {
@@ -162,7 +162,7 @@ namespace tgui
                 ratioList += ", " + Serializer::serialize(m_ratios[i]);
 
             ratioList += "]";
-            node->propertyValuePairs["Ratios"] = std::make_unique<DataIO::ValueNode>(ratioList);
+            node->propertyValuePairs[U"Ratios"] = std::make_unique<DataIO::ValueNode>(ratioList);
         }
 
         return node;
@@ -174,16 +174,16 @@ namespace tgui
     {
         BoxLayout::load(node, renderers);
 
-        if (node->propertyValuePairs["Ratios"])
+        if (node->propertyValuePairs[U"Ratios"])
         {
-            if (!node->propertyValuePairs["Ratios"]->listNode)
-                throw Exception{"Failed to parse 'Ratios' property, expected a list as value"};
+            if (!node->propertyValuePairs[U"Ratios"]->listNode)
+                throw Exception{U"Failed to parse 'Ratios' property, expected a list as value"};
 
-            if (node->propertyValuePairs["Ratios"]->valueList.size() != getWidgets().size())
-                throw Exception{"Amounts of values for 'Ratios' differs from the amount in child widgets"};
+            if (node->propertyValuePairs[U"Ratios"]->valueList.size() != getWidgets().size())
+                throw Exception{U"Amounts of values for 'Ratios' differs from the amount in child widgets"};
 
-            for (std::size_t i = 0; i < node->propertyValuePairs["Ratios"]->valueList.size(); ++i)
-                setRatio(i, Deserializer::deserialize(ObjectConverter::Type::Number, node->propertyValuePairs["Ratios"]->valueList[i]).getNumber());
+            for (std::size_t i = 0; i < node->propertyValuePairs[U"Ratios"]->valueList.size(); ++i)
+                setRatio(i, Deserializer::deserialize(ObjectConverter::Type::Number, node->propertyValuePairs[U"Ratios"]->valueList[i]).getNumber());
         }
     }
 

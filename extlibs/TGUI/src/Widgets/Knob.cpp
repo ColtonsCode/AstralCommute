@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -24,14 +24,19 @@
 
 
 #include <TGUI/Widgets/Knob.hpp>
-#include <cmath>
+
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cmath>
+
+    #if defined(__cpp_lib_math_constants) && (__cpp_lib_math_constants >= 201907L)
+        #include <numbers>
+    #endif
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace
 {
-    const float pi = 3.14159265358979f;
-
     bool compareFloats(float x, float y)
     {
         return (std::abs(x - y) < 0.0000001f);
@@ -42,13 +47,15 @@ namespace
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char Knob::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     Knob::Knob(const char* typeName, bool initRenderer) :
         Widget{typeName, false}
     {
-        m_draggableWidget = true;
-
         if (initRenderer)
         {
             m_renderer = aurora::makeCopied<KnobRenderer>();
@@ -67,7 +74,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Knob::Ptr Knob::copy(Knob::ConstPtr knob)
+    Knob::Ptr Knob::copy(const Knob::ConstPtr& knob)
     {
         if (knob)
             return std::static_pointer_cast<Knob>(knob->clone());
@@ -98,13 +105,6 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    const KnobRenderer* Knob::getRenderer() const
-    {
-        return aurora::downcast<const KnobRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     void Knob::setSize(const Layout2d& size)
     {
         Widget::setSize(size);
@@ -114,8 +114,8 @@ namespace tgui
         if (m_spriteBackground.isSet() && m_spriteForeground.isSet())
         {
             m_spriteBackground.setSize(getSize());
-            m_spriteForeground.setSize({(m_spriteForeground.getTexture().getImageSize().x / m_spriteBackground.getTexture().getImageSize().x) * getSize().x,
-                                        (m_spriteForeground.getTexture().getImageSize().y / m_spriteBackground.getTexture().getImageSize().y) * getSize().y});
+            m_spriteForeground.setSize({(m_spriteForeground.getTexture().getImageSize().x / static_cast<float>(m_spriteBackground.getTexture().getImageSize().x)) * getSize().x,
+                                        (m_spriteForeground.getTexture().getImageSize().y / static_cast<float>(m_spriteBackground.getTexture().getImageSize().y)) * getSize().y});
         }
     }
 
@@ -296,12 +296,13 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Knob::leftMousePressed(Vector2f pos)
+    bool Knob::leftMousePressed(Vector2f pos)
     {
         Widget::leftMousePressed(pos);
 
         // Change the value of the knob depending on where you clicked
         mouseMoved(pos);
+        return true;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -328,6 +329,11 @@ namespace tgui
             }
             else
             {
+#if defined(__cpp_lib_math_constants) && (__cpp_lib_math_constants >= 201907L)
+                const float pi = std::numbers::pi_v<float>;
+#else
+                const float pi = 3.14159265359f;
+#endif
                 m_angle = std::atan2(centerPosition.y - pos.y, pos.x - centerPosition.x) * 180.0f / pi;
                 if (m_angle < 0)
                     m_angle += 360;
@@ -465,38 +471,38 @@ namespace tgui
 
     void Knob::rendererChanged(const String& property)
     {
-        if (property == "Borders")
+        if (property == U"Borders")
         {
             m_bordersCached = getSharedRenderer()->getBorders();
             setSize(m_size);
         }
-        else if (property == "TextureBackground")
+        else if (property == U"TextureBackground")
         {
             m_spriteBackground.setTexture(getSharedRenderer()->getTextureBackground());
             setSize(m_size);
         }
-        else if (property == "TextureForeground")
+        else if (property == U"TextureForeground")
         {
             m_spriteForeground.setTexture(getSharedRenderer()->getTextureForeground());
             setSize(m_size);
         }
-        else if (property == "BorderColor")
+        else if (property == U"BorderColor")
         {
             m_borderColorCached = getSharedRenderer()->getBorderColor();
         }
-        else if (property == "BackgroundColor")
+        else if (property == U"BackgroundColor")
         {
             m_backgroundColorCached = getSharedRenderer()->getBackgroundColor();
         }
-        else if (property == "ThumbColor")
+        else if (property == U"ThumbColor")
         {
             m_thumbColorCached = getSharedRenderer()->getThumbColor();
         }
-        else if (property == "ImageRotation")
+        else if (property == U"ImageRotation")
         {
             m_imageRotationCached = getSharedRenderer()->getImageRotation();
         }
-        else if ((property == "Opacity") || (property == "OpacityDisabled"))
+        else if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
             Widget::rendererChanged(property);
 
@@ -513,12 +519,12 @@ namespace tgui
     {
         auto node = Widget::save(renderers);
 
-        node->propertyValuePairs["ClockwiseTurning"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_clockwiseTurning));
-        node->propertyValuePairs["StartRotation"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_startRotation));
-        node->propertyValuePairs["EndRotation"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_endRotation));
-        node->propertyValuePairs["Minimum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_minimum));
-        node->propertyValuePairs["Maximum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_maximum));
-        node->propertyValuePairs["Value"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_value));
+        node->propertyValuePairs[U"ClockwiseTurning"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_clockwiseTurning));
+        node->propertyValuePairs[U"StartRotation"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_startRotation));
+        node->propertyValuePairs[U"EndRotation"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_endRotation));
+        node->propertyValuePairs[U"Minimum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_minimum));
+        node->propertyValuePairs[U"Maximum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_maximum));
+        node->propertyValuePairs[U"Value"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_value));
 
         return node;
     }
@@ -529,18 +535,18 @@ namespace tgui
     {
         Widget::load(node, renderers);
 
-        if (node->propertyValuePairs["StartRotation"])
-            setStartRotation(node->propertyValuePairs["StartRotation"]->value.toFloat());
-        if (node->propertyValuePairs["EndRotation"])
-            setEndRotation(node->propertyValuePairs["EndRotation"]->value.toFloat());
-        if (node->propertyValuePairs["Minimum"])
-            setMinimum(node->propertyValuePairs["Minimum"]->value.toFloat());
-        if (node->propertyValuePairs["Maximum"])
-            setMaximum(node->propertyValuePairs["Maximum"]->value.toFloat());
-        if (node->propertyValuePairs["Value"])
-            setValue(node->propertyValuePairs["Value"]->value.toFloat());
-        if (node->propertyValuePairs["ClockwiseTurning"])
-            setClockwiseTurning(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["ClockwiseTurning"]->value).getBool());
+        if (node->propertyValuePairs[U"StartRotation"])
+            setStartRotation(node->propertyValuePairs[U"StartRotation"]->value.toFloat());
+        if (node->propertyValuePairs[U"EndRotation"])
+            setEndRotation(node->propertyValuePairs[U"EndRotation"]->value.toFloat());
+        if (node->propertyValuePairs[U"Minimum"])
+            setMinimum(node->propertyValuePairs[U"Minimum"]->value.toFloat());
+        if (node->propertyValuePairs[U"Maximum"])
+            setMaximum(node->propertyValuePairs[U"Maximum"]->value.toFloat());
+        if (node->propertyValuePairs[U"Value"])
+            setValue(node->propertyValuePairs[U"Value"]->value.toFloat());
+        if (node->propertyValuePairs[U"ClockwiseTurning"])
+            setClockwiseTurning(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"ClockwiseTurning"]->value).getBool());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -553,7 +559,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Knob::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void Knob::draw(BackendRenderTarget& target, RenderStates states) const
     {
         const float innerSize = std::min(getInnerSize().x, getInnerSize().y);
 
@@ -586,11 +592,23 @@ namespace tgui
         }
         else
         {
+#if defined(__cpp_lib_math_constants) && (__cpp_lib_math_constants >= 201907L)
+            const float pi = std::numbers::pi_v<float>;
+#else
+            const float pi = 3.14159265359f;
+#endif
             const float radius = innerSize / 10.0f;
             states.transform.translate({(innerSize / 2.0f) - radius + (std::cos(m_angle / 180 * pi) * (innerSize / 2.f) * 3.f/5.f),
                                         (innerSize / 2.0f) - radius + (-std::sin(m_angle / 180 * pi) * (innerSize / 2.f) * 3.f/5.f)});
             target.drawCircle(states, radius * 2.0f, Color::applyOpacity(m_thumbColorCached, m_opacityCached));
         }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr Knob::clone() const
+    {
+        return std::make_shared<Knob>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

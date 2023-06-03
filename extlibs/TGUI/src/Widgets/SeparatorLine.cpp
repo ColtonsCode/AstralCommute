@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -29,6 +29,10 @@
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char SeparatorLine::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     SeparatorLine::SeparatorLine(const char* typeName, bool initRenderer) :
@@ -43,7 +47,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    SeparatorLine::Ptr SeparatorLine::create(Layout2d size)
+    SeparatorLine::Ptr SeparatorLine::create(const Layout2d& size)
     {
         auto separator = std::make_shared<SeparatorLine>();
         separator->setSize(size);
@@ -52,7 +56,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    SeparatorLine::Ptr SeparatorLine::copy(SeparatorLine::ConstPtr separator)
+    SeparatorLine::Ptr SeparatorLine::copy(const SeparatorLine::ConstPtr& separator)
     {
         if (separator)
             return std::static_pointer_cast<SeparatorLine>(separator->clone());
@@ -83,24 +87,24 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    const SeparatorLineRenderer* SeparatorLine::getRenderer() const
-    {
-        return aurora::downcast<const SeparatorLineRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     void SeparatorLine::rendererChanged(const String& property)
     {
-        if (property == "Color")
+        if (property == U"Color")
             m_colorCached = getSharedRenderer()->getColor();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void SeparatorLine::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void SeparatorLine::draw(BackendRenderTarget& target, RenderStates states) const
     {
         target.drawFilledRect(states, getSize(), Color::applyOpacity(m_colorCached, m_opacityCached));
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr SeparatorLine::clone() const
+    {
+        return std::make_shared<SeparatorLine>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

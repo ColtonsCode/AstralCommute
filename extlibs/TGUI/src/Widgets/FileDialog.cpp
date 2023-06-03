@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,18 +25,29 @@
 
 #include <TGUI/Widgets/FileDialog.hpp>
 #include <TGUI/FileDialogIconLoader.hpp>
-#include <vector>
-#include <map>
-#include <ctime>
+
+#if TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #ifdef TGUI_SYSTEM_WINDOWS
+        #include <time.h> // localtime_s
+    #endif
+#else
+    #include <vector>
+    #include <map>
+    #include <ctime>
+#endif
 
 #ifdef TGUI_SYSTEM_WINDOWS
-    #include <TGUI/WindowsInclude.hpp>
+    #include <TGUI/extlibs/IncludeWindows.hpp>
 #endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char FileDialog::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     FileDialog::FileDialog(const char* typeName, bool initRenderer) :
@@ -55,6 +66,7 @@ namespace tgui
         m_comboBoxFileTypes = ComboBox::create();
         m_buttonCancel = Button::create();
         m_buttonConfirm = Button::create();
+        m_buttonCreateFolder = Button::create();
 
         m_buttonCancel->setText("Cancel");
         m_buttonConfirm->setText("Open");
@@ -135,6 +147,7 @@ namespace tgui
     FileDialog::FileDialog(const FileDialog& other) :
         ChildWindow             {other},
         onFileSelect            {other.onFileSelect},
+        onCancel                {other.onCancel},
         m_currentDirectory      {other.m_currentDirectory},
         m_filesInDirectory      {other.m_filesInDirectory},
         m_fileIcons             {other.m_fileIcons},
@@ -147,11 +160,14 @@ namespace tgui
         m_multiSelect           {other.m_multiSelect},
         m_fileTypeFilters       {other.m_fileTypeFilters},
         m_selectedFileTypeFilter{other.m_selectedFileTypeFilter},
-        m_iconLoader            {other.m_iconLoader},
+        m_iconLoader            {FileDialogIconLoader::createInstance()},
         m_selectedFiles         {other.m_selectedFiles}
     {
         identifyChildWidgets();
         connectSignals();
+
+        // Update the file list (to refresh icons)
+        changePath(m_currentDirectory, false);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -159,6 +175,7 @@ namespace tgui
     FileDialog::FileDialog(FileDialog&& other) noexcept :
         ChildWindow             {std::move(other)},
         onFileSelect            {std::move(other.onFileSelect)},
+        onCancel                {std::move(other.onCancel)},
         m_buttonBack            {std::move(other.m_buttonBack)},
         m_buttonForward         {std::move(other.m_buttonForward)},
         m_buttonUp              {std::move(other.m_buttonUp)},
@@ -169,6 +186,7 @@ namespace tgui
         m_comboBoxFileTypes     {std::move(other.m_comboBoxFileTypes)},
         m_buttonCancel          {std::move(other.m_buttonCancel)},
         m_buttonConfirm         {std::move(other.m_buttonConfirm)},
+        m_buttonCreateFolder    {std::move(other.m_buttonCreateFolder)},
         m_currentDirectory      {std::move(other.m_currentDirectory)},
         m_filesInDirectory      {std::move(other.m_filesInDirectory)},
         m_fileIcons             {std::move(other.m_fileIcons)},
@@ -196,6 +214,7 @@ namespace tgui
             ChildWindow::operator=(other);
 
             onFileSelect = other.onFileSelect;
+            onCancel = other.onCancel;
             m_currentDirectory = other.m_currentDirectory;
             m_filesInDirectory = other.m_filesInDirectory;
             m_fileIcons = other.m_fileIcons;
@@ -208,11 +227,14 @@ namespace tgui
             m_multiSelect = other.m_multiSelect;
             m_fileTypeFilters = other.m_fileTypeFilters;
             m_selectedFileTypeFilter = other.m_selectedFileTypeFilter;
-            m_iconLoader = other.m_iconLoader;
+            m_iconLoader = FileDialogIconLoader::createInstance();
             m_selectedFiles = other.m_selectedFiles;
 
             identifyChildWidgets();
             connectSignals();
+
+            // Update the file list (to refresh icons)
+            changePath(m_currentDirectory, false);
         }
 
         return *this;
@@ -224,8 +246,8 @@ namespace tgui
     {
         if (this != &other)
         {
-            ChildWindow::operator=(std::move(other));
             onFileSelect = std::move(other.onFileSelect);
+            onCancel = std::move(other.onCancel);
             m_buttonBack = std::move(other.m_buttonBack);
             m_buttonForward = std::move(other.m_buttonForward);
             m_buttonUp = std::move(other.m_buttonUp);
@@ -236,6 +258,7 @@ namespace tgui
             m_comboBoxFileTypes = std::move(other.m_comboBoxFileTypes);
             m_buttonCancel = std::move(other.m_buttonCancel);
             m_buttonConfirm = std::move(other.m_buttonConfirm);
+            m_buttonCreateFolder = std::move(other.m_buttonCreateFolder);
             m_currentDirectory = std::move(other.m_currentDirectory);
             m_filesInDirectory = std::move(other.m_filesInDirectory);
             m_fileIcons = std::move(other.m_fileIcons);
@@ -250,6 +273,7 @@ namespace tgui
             m_selectedFileTypeFilter = std::move(other.m_selectedFileTypeFilter);
             m_iconLoader = std::move(other.m_iconLoader);
             m_selectedFiles = std::move(other.m_selectedFiles);
+            ChildWindow::operator=(std::move(other));
 
             connectSignals();
         }
@@ -259,17 +283,18 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    FileDialog::Ptr FileDialog::create(String title, String confirmButtonText)
+    FileDialog::Ptr FileDialog::create(const String& title, const String& confirmButtonText, bool allowCreateFolder)
     {
         auto fileDialog = std::make_shared<FileDialog>();
         fileDialog->setTitle(title);
         fileDialog->setConfirmButtonText(confirmButtonText);
+        fileDialog->setAllowCreateFolder(allowCreateFolder);
         return fileDialog;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    FileDialog::Ptr FileDialog::copy(FileDialog::ConstPtr dialog)
+    FileDialog::Ptr FileDialog::copy(const FileDialog::ConstPtr& dialog)
     {
         if (dialog)
             return std::static_pointer_cast<FileDialog>(dialog->clone());
@@ -296,13 +321,6 @@ namespace tgui
     FileDialogRenderer* FileDialog::getRenderer()
     {
         return aurora::downcast<FileDialogRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    const FileDialogRenderer* FileDialog::getRenderer() const
-    {
-        return aurora::downcast<const FileDialogRenderer*>(Widget::getRenderer());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -372,11 +390,11 @@ namespace tgui
                 expression = expression.toLower();
             }
 
-            m_fileTypeFilters.push_back({filter.first, expressions});
+            m_fileTypeFilters.emplace_back(filter.first, expressions);
         }
 
         if (m_fileTypeFilters.size() == 0)
-            m_fileTypeFilters.push_back({"All files (*)", {}});
+            m_fileTypeFilters.emplace_back("All files (*)", std::vector<String>());
 
         m_comboBoxFileTypes->removeAllItems();
 
@@ -433,6 +451,39 @@ namespace tgui
     const String& FileDialog::getCancelButtonText() const
     {
         return m_buttonCancel->getText();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void FileDialog::setCreateFolderButtonText(const String& text)
+    {
+        m_buttonCreateFolder->setText(text);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    const String& FileDialog::getCreateFolderButtonText() const
+    {
+        return m_buttonCreateFolder->getText();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void FileDialog::setAllowCreateFolder(bool allowCreateFolder)
+    {
+        m_allowCreateFolder = allowCreateFolder;
+
+        if (nullptr == m_buttonCreateFolder->getParent() && m_allowCreateFolder)
+            addCreateFolderButton();
+        else
+            remove(m_buttonCreateFolder);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    bool FileDialog::getAllowCreateFolder() const
+    {
+        return m_allowCreateFolder;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -528,7 +579,7 @@ namespace tgui
     void FileDialog::setIconLoader(std::shared_ptr<FileDialogIconLoader> iconLoader)
     {
         TGUI_ASSERT(iconLoader != nullptr, "Icon loader can't be a nullptr");
-        m_iconLoader = iconLoader;
+        m_iconLoader = std::move(iconLoader);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -544,12 +595,59 @@ namespace tgui
     {
         if ((event.code == Event::KeyboardKey::Enter) && (!m_editBoxPath->isFocused()))
         {
+            if (m_createFolderDialogOpen)
+            {
+                EditBox::Ptr folderNameEditBox = get<EditBox>("FolderNameEditBox");
+                createFolder(folderNameEditBox->getText());
+                destroyCreateFolderDialog();
+                return;
+            }
+
             // Simulate a press on the confirm button
             if (m_buttonConfirm->isEnabled())
                 confirmButtonPressed();
         }
+        else if ((event.code == Event::KeyboardKey::Escape) && m_createFolderDialogOpen)
+        {
+            destroyCreateFolderDialog();
+        }
         else
+        {
             ChildWindow::keyPressed(event);
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void FileDialog::textEntered(char32_t key)
+    {
+        // We will only search through the list view if no other widget was focused. Pass the event to the focused widget otherwise.
+        if (m_focusedWidget && (m_focusedWidget != m_listView))
+        {
+            ChildWindow::textEntered(key);
+            return;
+        }
+
+        // We currently only search for the typed character. In the future we should remember previously typed characters too.
+        const String searchStr{key};
+
+        // Select the first item in the list view that starts with the search string (case-insensitive), starting the
+        // search from the currently selected item.
+        const std::size_t startIndex = static_cast<std::size_t>(std::max(0, m_listView->getSelectedItemIndex()));
+        const std::size_t itemCount = m_listView->getItemCount();
+        for (std::size_t i = 0; i < itemCount; ++i)
+        {
+            const std::size_t index = (startIndex + i) % itemCount;
+            const String& item = m_listView->getItem(index);
+            if (item.empty() || (item.length() < searchStr.length()))
+                continue;
+
+            if (item.startsWithIgnoreCase(searchStr))
+            {
+                m_listView->setSelectedItem(index);
+                break;
+            }
+        }
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -565,7 +663,9 @@ namespace tgui
 
         const int oldSelectedItem = m_listView->getSelectedItemIndex();
         sortFilesInListView();
-        m_listView->setSelectedItem(oldSelectedItem);
+        if (oldSelectedItem >= 0)
+            m_listView->setSelectedItem(static_cast<std::size_t>(oldSelectedItem));
+
         return true;
     }
 
@@ -576,7 +676,7 @@ namespace tgui
         if (updateHistory && (m_currentDirectory != path))
         {
             if (m_pathHistoryIndex + 1 < m_pathHistory.size())
-                m_pathHistory.erase(m_pathHistory.begin() + m_pathHistoryIndex + 1, m_pathHistory.end());
+                m_pathHistory.erase(m_pathHistory.begin() + static_cast<std::ptrdiff_t>(m_pathHistoryIndex + 1), m_pathHistory.end());
 
             m_pathHistory.push_back(path);
             m_pathHistoryIndex = m_pathHistory.size() - 1;
@@ -652,12 +752,12 @@ namespace tgui
         {
             TGUI_ASSERT(m_filesInDirectory.size() == m_fileIcons.size(), "Icon count must match file count in FileDialog::sortFilesInListView");
             for (std::size_t i = 0; i < m_filesInDirectory.size(); ++i)
-                items.push_back({m_filesInDirectory[i], m_fileIcons[i]});
+                items.emplace_back(m_filesInDirectory[i], m_fileIcons[i]);
         }
         else // There are no file icons
         {
             for (const auto& file : m_filesInDirectory)
-                items.push_back({file, {}});
+                items.emplace_back(file, Texture{});
         }
 
         std::sort(items.begin(), items.end(), [this](const auto& leftItem, const auto& rightItem){
@@ -746,34 +846,37 @@ namespace tgui
             {
                 if (file.fileSize == 0)
                     fileSizeStr = U"0.0 KB";
-                else if (file.fileSize < 100u)
+                else if (file.fileSize < static_cast<std::uintmax_t>(100))
                     fileSizeStr = U"0.1 KB";
-                else if (file.fileSize < 1000u*1000)
+                else if (file.fileSize < static_cast<std::uintmax_t>(1000)*1000)
                     fileSizeStr = String::fromNumberRounded(file.fileSize / 1000.f, 1) + U" KB";
-                else if (file.fileSize < 1000u*1000*1000)
+                else if (file.fileSize < static_cast<std::uintmax_t>(1000)*1000*1000)
                     fileSizeStr = String::fromNumberRounded(file.fileSize / 1000.f / 1000.f, 1) + U" MB";
-                else if (file.fileSize < 1000ull*1000*1000*1000)
+                else if (file.fileSize < static_cast<std::uintmax_t>(1000)*1000*1000*1000)
                     fileSizeStr = String::fromNumberRounded(file.fileSize / 1000.f / 1000.f / 1000.f, 1) + U" GB";
-                else if (file.fileSize < 1000ull*1000*1000*1000*1000)
+                else if (file.fileSize < static_cast<std::uintmax_t>(1000)*1000*1000*1000*1000)
                     fileSizeStr = String::fromNumberRounded(file.fileSize / 1000.f / 1000.f / 1000.f / 1000.f, 1) + U" TB";
             }
 
             String modificationTimeStr;
+            bool modificationTimeConverted = false;
             char buffer[19];
 #if defined(TGUI_SYSTEM_WINDOWS) && defined(_MSC_VER)
-            tm TimeStructure;
+            std::tm TimeStructure;
             if (localtime_s(&TimeStructure, &file.modificationTime) == 0)
             {
-                if (strftime(buffer, 19, "%e %b %Y  %R", &TimeStructure) != 0)
-                    modificationTimeStr = buffer;
+                if (std::strftime(&buffer[0], sizeof(buffer), "%e %b %Y  %R", &TimeStructure) != 0)
+                    modificationTimeConverted = true;
             }
 #elif defined(TGUI_SYSTEM_WINDOWS) && defined(__GNUC__) // MinGW doesn't support %e (day of the month without leading 0) and %R (same as %H:%M)
-            if (strftime(buffer, 19, "%d %b %Y  %H:%M", std::localtime(&file.modificationTime)) != 0)
-                modificationTimeStr = buffer;
+            if (strftime(&buffer[0], sizeof(buffer), "%d %b %Y  %H:%M", std::localtime(&file.modificationTime)) != 0)
+                modificationTimeConverted = true;
 #else
-            if (strftime(buffer, 19, "%e %b %Y  %R", std::localtime(&file.modificationTime)) != 0)
-                modificationTimeStr = buffer;
+            if (strftime(&buffer[0], sizeof(buffer), "%e %b %Y  %R", std::localtime(&file.modificationTime)) != 0)
+                modificationTimeConverted = true;
 #endif
+            if (modificationTimeConverted)
+                modificationTimeStr = static_cast<char*>(buffer);
 
 #if defined(TGUI_SYSTEM_WINDOWS)
             // Hide .lnk and .url extensions
@@ -800,7 +903,12 @@ namespace tgui
     void FileDialog::filesSelected(std::vector<Filesystem::Path> selectedFiles)
     {
         m_selectedFiles = std::move(selectedFiles);
-        onFileSelect.emit(this, m_selectedFiles);
+
+        if (!m_selectedFiles.empty())
+            onFileSelect.emit(this, m_selectedFiles);
+        else
+            onCancel.emit(this);
+
         close();
     }
 
@@ -860,6 +968,109 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    void FileDialog::addCreateFolderButton()
+    {
+        m_buttonCreateFolder = Button::create();
+
+        m_buttonCreateFolder->setText("Create Folder");
+        m_buttonCreateFolder->setOrigin(0, 1);
+        m_buttonCreateFolder->setPosition("10", "100% - 10");
+
+        m_buttonCreateFolder->onPress.disconnectAll();
+        m_buttonCreateFolder->onPress([this]{ createCreateFolderDialog(); });
+
+        add(m_buttonCreateFolder, "#TGUI_INTERNAL$ButtonCreateFolder#");
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void FileDialog::createFolder(const String& name)
+    {
+        Filesystem::createDirectory(m_currentDirectory / name);
+        changePath(m_currentDirectory, false);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void FileDialog::createCreateFolderDialog()
+    {
+        // Create a transparent background
+        Panel::Ptr backgroundPanel = Panel::create({"100%", "100%"});
+        backgroundPanel->getRenderer()->setBackgroundColor({0, 0, 0, 175});
+
+        ChildWindow::Ptr createFolderWindow = ChildWindow::create(m_buttonCreateFolder->getText(), TitleButton::None);
+        createFolderWindow->setPositionLocked(true);
+        createFolderWindow->setPosition("50%", "50%");
+        createFolderWindow->setSize("50%", "25%");
+        createFolderWindow->setOrigin(0.5f, 0.5f);
+
+        EditBox::Ptr folderNameEditBox = EditBox::create();
+        folderNameEditBox->setPosition("50%", "30%");
+        folderNameEditBox->setOrigin(0.5f, 0.5f);
+
+        Button::Ptr cancelButton = Button::create("Cancel");
+        cancelButton->setPosition("25%", "75%");
+        cancelButton->setOrigin(0.5f, 0.5f);
+
+        Button::Ptr confirmButton = Button::create("Confirm");
+        confirmButton->setPosition("75%", "75%");
+        confirmButton->setOrigin(0.5f, 0.5f);
+        confirmButton->setEnabled(false);
+
+        folderNameEditBox->onTextChange([this, editBox=folderNameEditBox.get(), button=confirmButton.get()] {
+            const bool isValid = isValidFolderName(editBox->getText());
+            button->setEnabled(isValid);
+        });
+
+        cancelButton->onPress([this] {
+            destroyCreateFolderDialog();
+        });
+
+        confirmButton->onPress([this, editBox=folderNameEditBox.get()] {
+            createFolder(editBox->getText());
+            destroyCreateFolderDialog();
+        });
+
+        createFolderWindow->add(folderNameEditBox, "FolderNameEditBox");
+        createFolderWindow->add(cancelButton);
+        createFolderWindow->add(confirmButton);
+
+        backgroundPanel->add(createFolderWindow);
+
+        add(backgroundPanel, "TransparentBackgroundPanel");
+
+        folderNameEditBox->setFocused(true);
+
+        m_createFolderDialogOpen = true;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void FileDialog::destroyCreateFolderDialog()
+    {
+        remove(get("TransparentBackgroundPanel"));
+        m_createFolderDialogOpen = false;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    bool FileDialog::isValidFolderName(const String& name)
+    {
+        if (name.empty() || (name == U".") || (name == U".."))
+            return false;
+
+#ifdef TGUI_SYSTEM_WINDOWS
+        if (name.find_first_of(U"\\/:*?\"<>|") != String::npos)
+#else
+        if (name.contains(U'/'))
+#endif
+            return false;
+
+        return true;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     void FileDialog::identifyChildWidgets()
     {
         m_buttonBack = get<Button>("#TGUI_INTERNAL$ButtonBack#");
@@ -872,6 +1083,7 @@ namespace tgui
         m_comboBoxFileTypes = get<ComboBox>("#TGUI_INTERNAL$ComboBoxFileTypes#");
         m_buttonCancel = get<Button>("#TGUI_INTERNAL$ButtonCancel#");
         m_buttonConfirm = get<Button>("#TGUI_INTERNAL$ButtonConfirm#");
+        m_buttonCreateFolder = get<Button>("#TGUI_INTERNAL$ButtonCreateFolder#");
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -904,10 +1116,17 @@ namespace tgui
         });
         m_buttonUp->onPress([this]{
             auto parent = m_currentDirectory.getParentPath();
+
+            // If the path ended with a slash but without a filename, then getParentPath simply
+            // removed the slash. We however want to go up one level higher.
+            if (m_currentDirectory.getFilename().empty())
+                parent = parent.getParentPath();
+
 #ifdef TGUI_SYSTEM_WINDOWS
             if (parent.asString() == m_currentDirectory.asString())
                 parent = Filesystem::Path("");
 #endif // TGUI_SYSTEM_WINDOWS
+
             changePath(parent, true);
         });
         m_editBoxPath->onReturnKeyPress([this]{
@@ -926,8 +1145,8 @@ namespace tgui
 
             if (m_multiSelect && (m_listView->getSelectedItemIndices().size() > 1))
                 m_editBoxFilename->setText(U"");
-            else if (m_selectingDirectory || !m_listView->getItemData<bool>(itemIndex))
-                m_editBoxFilename->setText(m_listView->getItem(itemIndex));
+            else if (m_selectingDirectory || !m_listView->getItemData<bool>(static_cast<std::size_t>(itemIndex)))
+                m_editBoxFilename->setText(m_listView->getItem(static_cast<std::size_t>(itemIndex)));
         });
         m_listView->onHeaderClick([this](int itemIndex){
             TGUI_ASSERT(itemIndex >= 0, "Can't click on list view header that doesn't exist");
@@ -945,22 +1164,22 @@ namespace tgui
             if (itemIndex < 0)
                 return;
 
-            if (m_listView->getItemData<bool>(itemIndex))
+            if (m_listView->getItemData<bool>(static_cast<std::size_t>(itemIndex)))
             {
 #ifdef TGUI_SYSTEM_WINDOWS
                 if (m_currentDirectory.asString().empty())
                 {
-                    changePath(Filesystem::Path(m_listView->getItem(itemIndex)), true);
+                    changePath(Filesystem::Path(m_listView->getItem(static_cast<std::size_t>(itemIndex))), true);
                     return;
                 }
 #endif
-                changePath(m_currentDirectory / m_listView->getItem(itemIndex), true);
+                changePath(m_currentDirectory / m_listView->getItem(static_cast<std::size_t>(itemIndex)), true);
                 if (m_selectingDirectory)
                     m_editBoxFilename->setText(U"");
             }
             else
             {
-                m_editBoxFilename->setText(m_listView->getItem(itemIndex));
+                m_editBoxFilename->setText(m_listView->getItem(static_cast<std::size_t>(itemIndex)));
                 filesSelected({m_currentDirectory / Filesystem::Path(m_editBoxFilename->getText())});
             }
         });
@@ -986,6 +1205,8 @@ namespace tgui
     {
         if (signalName == onFileSelect.getName())
             return onFileSelect;
+        else if (signalName == onCancel.getName())
+            return onCancel;
         else
             return ChildWindow::getSignal(std::move(signalName));
     }
@@ -994,21 +1215,22 @@ namespace tgui
 
     void FileDialog::rendererChanged(const String& property)
     {
-        if (property == "ListView")
+        if (property == U"ListView")
         {
             m_listView->setRenderer(getSharedRenderer()->getListView());
         }
-        else if (property == "EditBox")
+        else if (property == U"EditBox")
         {
             const auto& renderer = getSharedRenderer()->getEditBox();
             m_editBoxFilename->setRenderer(renderer);
             m_editBoxPath->setRenderer(renderer);
         }
-        else if (property == "Button")
+        else if (property == U"Button")
         {
             const auto& renderer = getSharedRenderer()->getButton();
             m_buttonCancel->setRenderer(renderer);
             m_buttonConfirm->setRenderer(renderer);
+            m_buttonCreateFolder->setRenderer(renderer);
 
             if (!getSharedRenderer()->getBackButton())
                 m_buttonBack->setRenderer(renderer);
@@ -1017,36 +1239,36 @@ namespace tgui
             if (!getSharedRenderer()->getUpButton())
                 m_buttonUp->setRenderer(renderer);
         }
-        else if (property == "BackButton")
+        else if (property == U"BackButton")
         {
             if (getSharedRenderer()->getBackButton())
                 m_buttonBack->setRenderer(getSharedRenderer()->getBackButton());
             else
                 m_buttonBack->setRenderer(getSharedRenderer()->getButton());
         }
-        else if (property == "ForwardButton")
+        else if (property == U"ForwardButton")
         {
             if (getSharedRenderer()->getForwardButton())
                 m_buttonForward->setRenderer(getSharedRenderer()->getForwardButton());
             else
                 m_buttonForward->setRenderer(getSharedRenderer()->getButton());
         }
-        else if (property == "UpButton")
+        else if (property == U"UpButton")
         {
             if (getSharedRenderer()->getUpButton())
                 m_buttonUp->setRenderer(getSharedRenderer()->getUpButton());
             else
                 m_buttonUp->setRenderer(getSharedRenderer()->getButton());
         }
-        else if (property == "FilenameLabel")
+        else if (property == U"FilenameLabel")
         {
             m_labelFilename->setRenderer(getSharedRenderer()->getFilenameLabel());
         }
-        else if (property == "FileTypeComboBox")
+        else if (property == U"FileTypeComboBox")
         {
             m_comboBoxFileTypes->setRenderer(getSharedRenderer()->getFileTypeComboBox());
         }
-        else if (property == "ArrowsOnNavigationButtonsVisible")
+        else if (property == U"ArrowsOnNavigationButtonsVisible")
         {
             if (getSharedRenderer()->getArrowsOnNavigationButtonsVisible())
             {
@@ -1061,7 +1283,7 @@ namespace tgui
                 m_buttonUp->setText(U"");
             }
         }
-        else if (property == "Font")
+        else if (property == U"Font")
         {
             ChildWindow::rendererChanged(property);
 
@@ -1075,6 +1297,7 @@ namespace tgui
             m_comboBoxFileTypes->setInheritedFont(m_fontCached);
             m_buttonCancel->setInheritedFont(m_fontCached);
             m_buttonConfirm->setInheritedFont(m_fontCached);
+            m_buttonCreateFolder->setInheritedFont(m_fontCached);
         }
         else
             ChildWindow::rendererChanged(property);
@@ -1089,25 +1312,25 @@ namespace tgui
         // Child widgets are saved indirectly by saving the child window.
         // The list view however contained items which shouldn't be saved, so we removed the nodes that were created for them.
         const auto listViewNodeIt = std::find_if(node->children.begin(), node->children.end(), [](const std::unique_ptr<DataIO::Node>& child){
-            return child->name == "ListView.\"#TGUI_INTERNAL$ListView#\"";
+            return child->name == U"ListView.\"#TGUI_INTERNAL$ListView#\"";
         });
         TGUI_ASSERT(listViewNodeIt != node->children.end(), "FileDialog::save couldn't find its ListView");
-        auto& listViewNode = *listViewNodeIt;
+        const auto& listViewNode = *listViewNodeIt;
         listViewNode->children.erase(std::remove_if(listViewNode->children.begin(), listViewNode->children.end(), [](const std::unique_ptr<DataIO::Node>& child){
-            return child->name == "Item";
+            return child->name == U"Item";
         }), listViewNode->children.end());
 
         // We currently don't save the path, so the text in the path edit box shouldn't be saved either
         const auto pathEditBoxNodeIt = std::find_if(node->children.begin(), node->children.end(), [](const std::unique_ptr<DataIO::Node>& child){
-            return child->name == "EditBox.\"#TGUI_INTERNAL$EditBoxPath#\"";
+            return child->name == U"EditBox.\"#TGUI_INTERNAL$EditBoxPath#\"";
         });
         TGUI_ASSERT(pathEditBoxNodeIt != node->children.end(), "FileDialog::save couldn't find its path EditBox");
-        auto& pathEditBoxNode = *pathEditBoxNodeIt;
-        pathEditBoxNode->propertyValuePairs.erase("Text");
+        const auto& pathEditBoxNode = *pathEditBoxNodeIt;
+        pathEditBoxNode->propertyValuePairs.erase(U"Text");
 
-        node->propertyValuePairs["FileMustExist"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_fileMustExist));
-        node->propertyValuePairs["SelectingDirectory"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_selectingDirectory));
-        node->propertyValuePairs["MultiSelect"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_multiSelect));
+        node->propertyValuePairs[U"FileMustExist"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_fileMustExist));
+        node->propertyValuePairs[U"SelectingDirectory"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_selectingDirectory));
+        node->propertyValuePairs[U"MultiSelect"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_multiSelect));
 
         if (!m_fileTypeFilters.empty())
         {
@@ -1128,12 +1351,12 @@ namespace tgui
                 }
                 patternListStr += "]";
 
-                filterNode->propertyValuePairs["Description"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(filter.first));
-                filterNode->propertyValuePairs["Pattern"] = std::make_unique<DataIO::ValueNode>(patternListStr);
+                filterNode->propertyValuePairs[U"Description"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(filter.first));
+                filterNode->propertyValuePairs[U"Pattern"] = std::make_unique<DataIO::ValueNode>(patternListStr);
             }
 
             if (m_fileTypeFilters.size() > 1)
-                node->propertyValuePairs["SelectedFileTypeFilter"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_selectedFileTypeFilter));
+                node->propertyValuePairs[U"SelectedFileTypeFilter"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_selectedFileTypeFilter));
         }
 
         return node;
@@ -1146,30 +1369,30 @@ namespace tgui
         std::vector<std::pair<String, std::vector<String>>> fileTypeFilters;
         for (const auto& childNode : node->children)
         {
-            if (childNode->name != "FileTypeFilter")
+            if (childNode->name != U"FileTypeFilter")
                 continue;
 
-            if (!childNode->propertyValuePairs["Description"])
-                throw Exception{"Failed to parse 'FileTypeFilter' property, no Description property found"};
+            if (!childNode->propertyValuePairs[U"Description"])
+                throw Exception{U"Failed to parse 'FileTypeFilter' property, no Description property found"};
 
-            if (!childNode->propertyValuePairs["Pattern"])
-                throw Exception{"Failed to parse 'FileTypeFilter' property, no Pattern property found"};
-            if (!childNode->propertyValuePairs["Pattern"]->listNode)
-                throw Exception{"Failed to parse 'Pattern' property inside the 'FileTypeFilter' property, expected a list as value"};
+            if (!childNode->propertyValuePairs[U"Pattern"])
+                throw Exception{U"Failed to parse 'FileTypeFilter' property, no Pattern property found"};
+            if (!childNode->propertyValuePairs[U"Pattern"]->listNode)
+                throw Exception{U"Failed to parse 'Pattern' property inside the 'FileTypeFilter' property, expected a list as value"};
 
-            String description = Deserializer::deserialize(ObjectConverter::Type::String, childNode->propertyValuePairs["Description"]->value).getString();
+            String description = Deserializer::deserialize(ObjectConverter::Type::String, childNode->propertyValuePairs[U"Description"]->value).getString();
 
             std::vector<String> patterns;
-            for (const auto& item : childNode->propertyValuePairs["Pattern"]->valueList)
+            for (const auto& item : childNode->propertyValuePairs[U"Pattern"]->valueList)
                 patterns.push_back(Deserializer::deserialize(ObjectConverter::Type::String, item).getString());
 
-            fileTypeFilters.push_back({description, patterns});
+            fileTypeFilters.emplace_back(description, patterns);
         }
 
         // We have to remove FileTypeFilter nodes before calling the load function on the base class, because Container will
         // assume that all child sections are widgets.
         node->children.erase(std::remove_if(node->children.begin(), node->children.end(), [](const std::unique_ptr<DataIO::Node>& child){
-            return child->name == "FileTypeFilter";
+            return child->name == U"FileTypeFilter";
         }), node->children.end());
 
         // Remove the widgets that the constructor created because they will be created when loading the child window
@@ -1180,23 +1403,30 @@ namespace tgui
         identifyChildWidgets();
         connectSignals();
 
-        if (node->propertyValuePairs["FileMustExist"])
-            setFileMustExist(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["FileMustExist"]->value).getBool());
-        if (node->propertyValuePairs["SelectingDirectory"])
-            setSelectingDirectory(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["SelectingDirectory"]->value).getBool());
-        if (node->propertyValuePairs["MultiSelect"])
-            setMultiSelect(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["MultiSelect"]->value).getBool());
+        if (node->propertyValuePairs[U"FileMustExist"])
+            setFileMustExist(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"FileMustExist"]->value).getBool());
+        if (node->propertyValuePairs[U"SelectingDirectory"])
+            setSelectingDirectory(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"SelectingDirectory"]->value).getBool());
+        if (node->propertyValuePairs[U"MultiSelect"])
+            setMultiSelect(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"MultiSelect"]->value).getBool());
 
         if (!fileTypeFilters.empty())
         {
             std::size_t filterIndex = 0;
-            if (node->propertyValuePairs["SelectedFileTypeFilter"])
-                filterIndex = static_cast<std::size_t>(Deserializer::deserialize(ObjectConverter::Type::Number, node->propertyValuePairs["SelectedFileTypeFilter"]->value).getNumber());
+            if (node->propertyValuePairs[U"SelectedFileTypeFilter"])
+                filterIndex = static_cast<std::size_t>(Deserializer::deserialize(ObjectConverter::Type::Number, node->propertyValuePairs[U"SelectedFileTypeFilter"]->value).getNumber());
 
             setFileTypeFilters(fileTypeFilters, filterIndex);
         }
 
         sortFilesInListView();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr FileDialog::clone() const
+    {
+        return std::make_shared<FileDialog>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

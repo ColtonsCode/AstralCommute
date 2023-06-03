@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,8 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Widgets/RadioButtonGroup.hpp>
-#include <TGUI/Widgets/RadioButton.hpp>
 
 TEST_CASE("[RadioButtonGroup]")
 {
@@ -37,29 +35,6 @@ TEST_CASE("[RadioButtonGroup]")
     }
 
     testWidgetRenderer(group->getRenderer());
-    SECTION("Renderer")
-    {
-        auto renderer = group->getRenderer();
-
-        SECTION("set serialized property")
-        {
-            REQUIRE_NOTHROW(renderer->setProperty("Padding", "(1, 2, 3, 4)"));
-        }
-
-        SECTION("set object property")
-        {
-            REQUIRE_NOTHROW(renderer->setProperty("Padding", tgui::Padding{1, 2, 3, 4}));
-        }
-
-        SECTION("functions")
-        {
-            renderer->setPadding({1, 2, 3, 4});
-        }
-
-        REQUIRE(renderer->getProperty("Padding").getOutline() == tgui::Padding(1, 2, 3, 4));
-
-        REQUIRE(renderer->getPadding() == tgui::Padding(1, 2, 3, 4));
-    }
 
     SECTION("Saving and loading from file")
     {
@@ -103,8 +78,7 @@ TEST_CASE("[RadioButtonGroup]")
         group->setPosition({10, 5});
         group->setSize({4, 3}); // RadioButtonGroup ignores its size
 
-        tgui::GroupRenderer renderer = tgui::RendererData::create();
-        renderer.setPadding({1, 2, 3, 4});
+        tgui::WidgetRenderer renderer = tgui::RendererData::create();
         renderer.setOpacity(0.7f);
         group->setRenderer(renderer.getData());
 

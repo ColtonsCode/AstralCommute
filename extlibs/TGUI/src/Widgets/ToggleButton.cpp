@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -29,6 +29,10 @@
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char ToggleButton::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     ToggleButton::ToggleButton(const char* typeName, bool initRenderer) :
@@ -52,7 +56,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    ToggleButton::Ptr ToggleButton::copy(ToggleButton::ConstPtr button)
+    ToggleButton::Ptr ToggleButton::copy(const ToggleButton::ConstPtr& button)
     {
         if (button)
             return std::static_pointer_cast<ToggleButton>(button->clone());
@@ -114,6 +118,32 @@ namespace tgui
             return onToggle;
         else
             return ButtonBase::getSignal(std::move(signalName));
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    std::unique_ptr<DataIO::Node> ToggleButton::save(SavingRenderersMap& renderers) const
+    {
+        auto node = ButtonBase::save(renderers);
+        node->propertyValuePairs[U"Down"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_down));
+        return node;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void ToggleButton::load(const std::unique_ptr<DataIO::Node>& node, const LoadingRenderersMap& renderers)
+    {
+        ButtonBase::load(node, renderers);
+
+        if (node->propertyValuePairs[U"Down"])
+            setDown(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"Down"]->value).getBool());
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr ToggleButton::clone() const
+    {
+        return std::make_shared<ToggleButton>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,7 +25,9 @@
 
 #include <TGUI/Timer.hpp>
 
-#include <algorithm>
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <algorithm>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -75,7 +77,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Timer::scheduleCallback(std::function<void()> callback, Duration interval)
+    void Timer::scheduleCallback(const std::function<void()>& callback, Duration interval)
     {
         auto timer = createTimer(callback, interval, true);
         timer->m_repeats = false;
@@ -160,8 +162,9 @@ namespace tgui
         auto activeTimers = m_activeTimers; // The callback could start and stop timers, so we need to operate on a copy
         for (auto& timer : activeTimers)
         {
-            timer->m_remainingDuration -= elapsedTime;
-            if (timer->m_remainingDuration <= Duration())
+            if (timer->m_remainingDuration > elapsedTime)
+                timer->m_remainingDuration -= elapsedTime;
+            else
             {
                 timerTriggered = true;
                 timer->m_callback();
@@ -181,7 +184,7 @@ namespace tgui
     {
         // If there are no active timers then return an empty object
         if (m_activeTimers.empty())
-            return Optional<Duration>();
+            return {};
 
         // Find the timer with the smallest remaining duration
         Duration minDuration = m_activeTimers[0]->m_remainingDuration;

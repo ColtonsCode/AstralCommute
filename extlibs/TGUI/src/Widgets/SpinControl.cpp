@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -28,16 +28,17 @@
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char SpinControl::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     SpinControl::SpinControl(const char* typeName, bool initRenderer) :
         SubwidgetContainer{typeName, initRenderer}
     {
-        m_spinButton = SpinButton::create();
-        m_spinText = EditBox::create();
         m_spinText->setInputValidator(EditBox::Validator::Float);
-
-        m_spinText->setSize(m_spinText->getSize().x, m_spinButton->getSize().y);
+        m_spinText->setSize(m_spinText->getSize().x - m_spinButton->getSize().x, m_spinButton->getSize().y);
 
         m_container->add(m_spinText, "SpinText");
         m_container->add(m_spinButton, "SpinButton");
@@ -47,7 +48,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    SpinControl::Ptr SpinControl::create(float min, float max, float value, unsigned decimal, float step)
+    SpinControl::Ptr SpinControl::create(float min, float max, float value, unsigned int decimal, float step)
     {
         auto spinControl = std::make_shared<SpinControl>();
         spinControl->setMinimum(min);
@@ -61,7 +62,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    SpinControl::Ptr SpinControl::copy(SpinControl::ConstPtr spinCtrl)
+    SpinControl::Ptr SpinControl::copy(const SpinControl::ConstPtr& spinCtrl)
     {
         if (spinCtrl)
             return std::static_pointer_cast<SpinControl>(spinCtrl->clone());
@@ -92,13 +93,6 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    const SpinButtonRenderer* SpinControl::getSpinButtonRenderer() const
-    {
-        return m_spinButton->getRenderer();
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     EditBoxRenderer* SpinControl::getSpinTextSharedRenderer()
     {
         return m_spinText->getSharedRenderer();
@@ -120,21 +114,22 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    const EditBoxRenderer* SpinControl::getSpinTextRenderer() const
-    {
-        return m_spinText->getRenderer();
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     void SpinControl::setSize(const Layout2d& size)
     {
         SubwidgetContainer::setSize(size);
 
         if (getSize().x > getSize().y)
         {
-            m_spinButton->setSize({getSize().y / 2, getSize().y});
-            m_spinText->setSize({getSize().x - getSize().y / 2, getSize().y});
+            if (m_useWideArrows)
+            {
+                m_spinButton->setSize({getSize().y, getSize().y});
+                m_spinText->setSize({getSize().x - getSize().y, getSize().y});
+            }
+            else
+            {
+                m_spinButton->setSize({getSize().y / 2, getSize().y});
+                m_spinText->setSize({getSize().x - getSize().y / 2, getSize().y});
+            }
         }
         else
         {
@@ -222,10 +217,26 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    void SpinControl::setUseWideArrows(bool useWideArrows)
+    {
+        m_useWideArrows = useWideArrows;
+        setSize(m_size);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    bool SpinControl::getUseWideArrows() const
+    {
+        return m_useWideArrows;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     std::unique_ptr<DataIO::Node> SpinControl::save(SavingRenderersMap& renderers) const
     {
         auto node = SubwidgetContainer::save(renderers);
-        node->propertyValuePairs["DecimalPlaces"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_decimalPlaces));
+        node->propertyValuePairs[U"DecimalPlaces"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_decimalPlaces));
+        node->propertyValuePairs[U"UseWideArrows"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_useWideArrows));
         return node;
     }
 
@@ -235,11 +246,13 @@ namespace tgui
     {
         SubwidgetContainer::load(node, renderers);
 
-        if (node->propertyValuePairs["DecimalPlaces"])
-            setDecimalPlaces(node->propertyValuePairs["DecimalPlaces"]->value.toUInt());
+        if (node->propertyValuePairs[U"DecimalPlaces"])
+            setDecimalPlaces(node->propertyValuePairs[U"DecimalPlaces"]->value.toUInt());
+        if (node->propertyValuePairs[U"UseWideArrows"])
+            setUseWideArrows(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"UseWideArrows"]->value).getBool());
 
-        m_spinText = m_container->get<tgui::EditBox>("SpinText");
-        m_spinButton = m_container->get<tgui::SpinButton>("SpinButton");
+        m_spinText = m_container->get<EditBox>("SpinText");
+        m_spinButton = m_container->get<SpinButton>("SpinButton");
 
         init();
         setString(String::fromNumberRounded(m_spinButton->getValue(), m_decimalPlaces));
@@ -291,6 +304,13 @@ namespace tgui
     void SpinControl::setString(const String& str)
     {
         m_spinText->setText(str);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr SpinControl::clone() const
+    {
+        return std::make_shared<SpinControl>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

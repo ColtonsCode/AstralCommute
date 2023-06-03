@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -28,11 +28,15 @@
 
 
 #include <TGUI/ObjectConverter.hpp>
-#include <vector>
+
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <map>
+    #include <vector>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Deserializes a settable property
@@ -43,16 +47,16 @@ namespace tgui
     public:
         using DeserializeFunc = std::function<ObjectConverter(const String&)>;
 
-        static ObjectConverter deserialize(ObjectConverter::Type type, const String& serializedString);
+        TGUI_NODISCARD static ObjectConverter deserialize(ObjectConverter::Type type, const String& serializedString);
 
         static void setFunction(ObjectConverter::Type type, const DeserializeFunc& deserializer);
-        static const DeserializeFunc& getFunction(ObjectConverter::Type type);
+        TGUI_NODISCARD static const DeserializeFunc& getFunction(ObjectConverter::Type type);
 
     public:
-        static std::vector<String> split(const String& str, char delim);
+        TGUI_NODISCARD static std::vector<String> split(const String& str, char delim);
 
     private:
-        static std::map<ObjectConverter::Type, DeserializeFunc> m_deserializers;
+        static std::map<ObjectConverter::Type, DeserializeFunc> m_deserializers;  /// We can't use unordered_map with enum class in GCC < 6
     };
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

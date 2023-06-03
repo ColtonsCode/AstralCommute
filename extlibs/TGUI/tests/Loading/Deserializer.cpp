@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,11 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Loading/Deserializer.hpp>
-
-#if TGUI_HAS_BACKEND_SFML
-    #include <SFML/System/Err.hpp>
-#endif
 
 using Type = tgui::ObjectConverter::Type;
 
@@ -52,15 +47,7 @@ TEST_CASE("[Deserializer]")
         REQUIRE(tgui::Deserializer::deserialize(Type::Font, "nullptr").getFont() == nullptr);
         REQUIRE(tgui::Deserializer::deserialize(Type::Font, "null").getFont() == nullptr);
 
-#if TGUI_HAS_BACKEND_SFML
-        std::streambuf *oldbuf = sf::err().rdbuf(0); // Prevent SFML from printing a warning
-#endif
-
         REQUIRE_THROWS_AS(tgui::Deserializer::deserialize(Type::Font, "NonExistentFile"), tgui::Exception);
-
-#if TGUI_HAS_BACKEND_SFML
-        sf::err().rdbuf(oldbuf);
-#endif
     }
 
     SECTION("deserialize color")
@@ -185,6 +172,16 @@ TEST_CASE("[Deserializer]")
         texture = tgui::Deserializer::deserialize(Type::Texture, "\"resources/image.png\" Middle(7, 4)").getTexture();
         REQUIRE(texture.getMiddleRect() == tgui::UIntRect(7, 4, 36, 42));
 
+        texture = tgui::Deserializer::deserialize(Type::Texture, "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg==").getTexture();
+        REQUIRE(texture.getData() != nullptr);
+        REQUIRE(texture.getPartRect() == tgui::UIntRect(0, 0, 5, 5));
+        REQUIRE(texture.getMiddleRect() == tgui::UIntRect(0, 0, 5, 5));
+        REQUIRE(texture.isSmooth());
+
+        texture = tgui::Deserializer::deserialize(Type::Texture, "\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg==\" NoSmooth").getTexture();
+        REQUIRE(texture.getData() != nullptr);
+        REQUIRE(!texture.isSmooth());
+
         texture = tgui::Deserializer::deserialize(Type::Texture, "none").getTexture();
         REQUIRE(texture.getData() == nullptr);
 
@@ -199,15 +196,7 @@ TEST_CASE("[Deserializer]")
         REQUIRE_THROWS_AS(tgui::Deserializer::deserialize(Type::Texture, "\"resources/image.png\" Middle(0,1,2)"), tgui::Exception);
         REQUIRE_THROWS_AS(tgui::Deserializer::deserialize(Type::Texture, "\"resources/image.png\" Middle(10, 10, 20, 20"), tgui::Exception);
 
-#if TGUI_HAS_BACKEND_SFML
-        std::streambuf *oldbuf = sf::err().rdbuf(0); // Prevent SFML from printing a warning
-#endif
-
         REQUIRE_THROWS_AS(tgui::Deserializer::deserialize(Type::Texture, "NonExistentFile"), tgui::Exception);
-
-#if TGUI_HAS_BACKEND_SFML
-        sf::err().rdbuf(oldbuf);
-#endif
     }
 
     SECTION("deserialize text style")

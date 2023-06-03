@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,7 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/TGUI.hpp>
 
 TEST_CASE("[Container]")
 {
@@ -86,6 +85,39 @@ TEST_CASE("[Container]")
             REQUIRE(container->get<tgui::Label>("w6") == nullptr); // non-existing child
             REQUIRE(container->get<tgui::Panel>("w2") == widget2); // direct child
             REQUIRE(container->get<tgui::Label>("w4") == widget4); // indirect child
+        }
+
+        SECTION("Recursive search")
+        {
+            container->removeAllWidgets();
+
+            auto child1 = tgui::Panel::create();
+            auto child2 = tgui::Panel::create();
+            auto child21 = tgui::Panel::create();
+            auto child211 = tgui::Button::create();
+            auto child22 = tgui::Panel::create();
+            auto child221 = tgui::TabContainer::create();
+            container->add(child1, "1");
+            container->add(child2, "2");
+            child2->add(child21, "21");
+            child21->add(child211, "211");
+            child2->add(child22, "22");
+            child22->add(child221, "221");
+
+            child221->addTab("Tab1");
+            child221->addTab("Tab2");
+            auto tab3 = child221->addTab("Tab3");
+            child221->addTab("Tab4");
+            auto child22131 = tgui::SpinButton::create();
+            tab3->add(child22131, "22131");
+
+            REQUIRE(container->get("1") == child1);
+            REQUIRE(container->get("2") == child2);
+            REQUIRE(container->get("21") == child21);
+            REQUIRE(container->get("211") == child211);
+            REQUIRE(container->get("22") == child22);
+            REQUIRE(container->get("221") == child221);
+            REQUIRE(container->get("22131") == child22131);
         }
 
         SECTION("reusing name")
@@ -175,6 +207,7 @@ TEST_CASE("[Container]")
 
     SECTION("Change z-order")
     {
+        widget2->removeAllWidgets();
         container->removeAllWidgets();
 
         // moveWidgetForward and moveWidgetBackward will return list size when widget hasn't been added yet

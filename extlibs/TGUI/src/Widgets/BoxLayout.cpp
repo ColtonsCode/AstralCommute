@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -60,16 +60,9 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    const BoxLayoutRenderer* BoxLayout::getRenderer() const
-    {
-        return aurora::downcast<const BoxLayoutRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     void BoxLayout::setSize(const Layout2d& size)
     {
-        Container::setSize(size);
+        Group::setSize(size);
 
         updateWidgets();
     }
@@ -92,7 +85,7 @@ namespace tgui
 
             m_widgets.pop_back();
 
-            m_widgets.insert(m_widgets.begin() + index, widget);
+            m_widgets.insert(m_widgets.begin() + static_cast<std::ptrdiff_t>(index), widget);
         }
         else // Just add the widget to the back
             Group::add(widget, widgetName);
@@ -140,12 +133,12 @@ namespace tgui
 
     void BoxLayout::rendererChanged(const String& property)
     {
-        if (property == "SpaceBetweenWidgets")
+        if (property == U"SpaceBetweenWidgets")
         {
             m_spaceBetweenWidgetsCached = getSharedRenderer()->getSpaceBetweenWidgets();
             updateWidgets();
         }
-        else if (property == "Padding")
+        else if (property == U"Padding")
         {
             Group::rendererChanged(property);
 

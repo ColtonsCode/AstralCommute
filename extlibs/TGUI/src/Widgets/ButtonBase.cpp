@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,6 +25,10 @@
 
 #include <TGUI/Widgets/ButtonBase.hpp>
 
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cmath>
+#endif
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace tgui
@@ -33,12 +37,12 @@ namespace tgui
 
     ButtonBase::ButtonBase(const char* typeName, bool initRenderer) :
         ClickableWidget{typeName, false},
+        m_textPosition{RelativeValue(0.5f), RelativeValue(0.5f)},
+        m_textOrigin{0.5f, 0.5f},
         m_backgroundComponent{std::make_shared<priv::dev::BackgroundComponent>(&background)},
         m_textComponent{std::make_shared<priv::dev::TextComponent>(&text)}
     {
-        initComponents();
-
-        m_textComponent->setPositionAlignment(priv::dev::PositionAlignment::Center);
+        ButtonBase::initComponents();
 
         if (initRenderer)
         {
@@ -58,7 +62,9 @@ namespace tgui
         m_down                        {other.m_down},
         m_state                       {other.m_state},
         m_autoSize                    {other.m_autoSize},
-        m_updatingSizeWhileSettingText{other.m_updatingSizeWhileSettingText},
+        m_updatingTextSize            {false},
+        m_textPosition                {other.m_textPosition},
+        m_textOrigin                  {other.m_textOrigin},
         background                    {other.background},
         text                          {other.text},
         m_stylePropertiesNames        {},
@@ -68,18 +74,20 @@ namespace tgui
         m_textComponent               {std::make_shared<priv::dev::TextComponent>(*other.m_textComponent, &text)},
         m_components                  {}
     {
-        initComponents();
+        ButtonBase::initComponents();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    ButtonBase::ButtonBase(ButtonBase&& other) :
+    ButtonBase::ButtonBase(ButtonBase&& other) noexcept :
         ClickableWidget               {std::move(other)},
         m_string                      {std::move(other.m_string)},
         m_down                        {std::move(other.m_down)},
         m_state                       {std::move(other.m_state)},
         m_autoSize                    {std::move(other.m_autoSize)},
-        m_updatingSizeWhileSettingText{std::move(other.m_updatingSizeWhileSettingText)},
+        m_updatingTextSize            {false},
+        m_textPosition                {std::move(other.m_textPosition)},
+        m_textOrigin                  {std::move(other.m_textOrigin)},
         background                    {std::move(other.background)},
         text                          {std::move(other.text)},
         m_stylePropertiesNames        {},
@@ -89,7 +97,7 @@ namespace tgui
         m_textComponent               {std::make_shared<priv::dev::TextComponent>(*other.m_textComponent, &text)},
         m_components                  {}
     {
-        initComponents();
+        ButtonBase::initComponents();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -98,12 +106,16 @@ namespace tgui
     {
         if (&other != this)
         {
+            text.style.disconnectCallback(m_textStyleChangedCallbackId);
+
             ClickableWidget::operator=(other);
             m_string                       = other.m_string;
             m_down                         = other.m_down;
             m_state                        = other.m_state;
             m_autoSize                     = other.m_autoSize;
-            m_updatingSizeWhileSettingText = other.m_updatingSizeWhileSettingText;
+            m_updatingTextSize             = false;
+            m_textPosition                 = other.m_textPosition;
+            m_textOrigin                   = other.m_textOrigin;
             background                     = other.background;
             text                           = other.text;
             m_stylePropertiesNames         = {};
@@ -113,7 +125,7 @@ namespace tgui
             m_textComponent                = std::make_shared<priv::dev::TextComponent>(*other.m_textComponent, &text);
             m_components                   = {};
 
-            initComponents();
+            ButtonBase::initComponents();
         }
 
         return *this;
@@ -121,16 +133,20 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    ButtonBase& ButtonBase::operator=(ButtonBase&& other)
+    ButtonBase& ButtonBase::operator=(ButtonBase&& other) noexcept
     {
         if (&other != this)
         {
+            text.style.disconnectCallback(m_textStyleChangedCallbackId);
+
             ClickableWidget::operator=(other);
             m_string                       = std::move(other.m_string);
             m_down                         = std::move(other.m_down);
             m_state                        = std::move(other.m_state);
             m_autoSize                     = std::move(other.m_autoSize);
-            m_updatingSizeWhileSettingText = std::move(other.m_updatingSizeWhileSettingText);
+            m_updatingTextSize             = false;
+            m_textPosition                 = std::move(other.m_textPosition);
+            m_textOrigin                   = std::move(other.m_textOrigin);
             background                     = std::move(other.background);
             text                           = std::move(other.text);
             m_stylePropertiesNames         = {};
@@ -140,10 +156,17 @@ namespace tgui
             m_textComponent                = std::make_shared<priv::dev::TextComponent>(*other.m_textComponent, &text);
             m_components                   = {};
 
-            initComponents();
+            ButtonBase::initComponents();
         }
 
         return *this;
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    ButtonBase::~ButtonBase()
+    {
+        text.style.disconnectCallback(m_textStyleChangedCallbackId);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -165,13 +188,6 @@ namespace tgui
     ButtonRenderer* ButtonBase::getRenderer()
     {
         return aurora::downcast<ButtonRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    const ButtonRenderer* ButtonBase::getRenderer() const
-    {
-        return aurora::downcast<const ButtonRenderer*>(Widget::getRenderer());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -199,52 +215,7 @@ namespace tgui
         m_string = caption;
         m_textComponent->setString(caption);
 
-        // Set the text size when the text has a fixed size
-        if (m_textSize != 0)
-        {
-            m_textComponent->setCharacterSize(m_textSize);
-            m_updatingSizeWhileSettingText = true;
-            updateSize();
-            m_updatingSizeWhileSettingText = false;
-        }
-
-        // Draw the text normally unless the height is more than double of the width
-        const Vector2f innerSize = m_backgroundComponent->getClientSize();
-        if (innerSize.y <= innerSize.x * 2)
-        {
-            // Auto size the text when necessary
-            if (m_textSize == 0)
-            {
-                const unsigned int textSize = Text::findBestTextSize(m_fontCached, innerSize.y * 0.8f);
-                m_textComponent->setCharacterSize(textSize);
-
-                // Make the text smaller when it's too width
-                if (m_textComponent->getSize().x > (innerSize.x * 0.85f))
-                    m_textComponent->setCharacterSize(static_cast<unsigned int>(textSize * ((innerSize.x * 0.85f) / m_textComponent->getSize().x)));
-            }
-        }
-        else // Place the text vertically
-        {
-            // The text is vertical
-            if (!m_string.empty())
-            {
-                m_textComponent->setString(m_string[0]);
-
-                for (unsigned int i = 1; i < m_string.length(); ++i)
-                    m_textComponent->setString(m_textComponent->getString() + "\n" + m_string[i]);
-            }
-
-            // Auto size the text when necessary
-            if (m_textSize == 0)
-            {
-                unsigned int textSize = Text::findBestTextSize(m_fontCached, innerSize.x * 0.8f);
-                m_textComponent->setCharacterSize(textSize);
-
-                // Make the text smaller when it's too high
-                if (m_textComponent->getSize().y > (innerSize.y * 0.85f))
-                    m_textComponent->setCharacterSize(static_cast<unsigned int>(textSize * innerSize.y * 0.85f / m_textComponent->getSize().y));
-            }
-        }
+        updateTextSize();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -256,22 +227,36 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ButtonBase::setTextSize(unsigned int size)
+    void ButtonBase::setTextPosition(Vector2<AbsoluteOrRelativeValue> position, Vector2f origin)
     {
-        if (size != m_textSize)
-        {
-            m_textSize = size;
-
-            // Call setText to reposition the text
-            setText(getText());
-        }
+        m_textPosition = position;
+        m_textOrigin = origin;
+        updateTextPosition();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    unsigned int ButtonBase::getTextSize() const
+    void ButtonBase::updateTextSize()
     {
-        return m_textComponent->getCharacterSize();
+        if ((m_textSize == 0) && !getSharedRenderer()->getTextSize())
+        {
+            // Auto-size the text
+            const Vector2f innerSize = m_backgroundComponent->getClientSize();
+            const unsigned int textSize = Text::findBestTextSize(m_fontCached, innerSize.y * 0.8f);
+
+            // Make the text smaller when it's too width
+            if (m_textComponent->getSize().x > (innerSize.x * 0.85f))
+                m_textSizeCached = static_cast<unsigned int>(textSize * ((innerSize.x * 0.85f) / m_textComponent->getSize().x));
+            else
+                m_textSizeCached = textSize;
+        }
+
+        m_textComponent->setCharacterSize(m_textSizeCached);
+        m_updatingTextSize = true;
+        updateSize();
+        m_updatingTextSize = false;
+
+        updateTextPosition();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -297,10 +282,11 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ButtonBase::leftMousePressed(Vector2f pos)
+    bool ButtonBase::leftMousePressed(Vector2f pos)
     {
         ClickableWidget::leftMousePressed(pos);
         updateState();
+        return false;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -339,115 +325,116 @@ namespace tgui
 
     void ButtonBase::rendererChanged(const String& property)
     {
-        if (property == "Borders")
+        if (property == U"Borders")
         {
             background.borders = getSharedRenderer()->getBorders();
             updateSize();
         }
-        else if (property == "RoundedBorderRadius")
+        else if (property == U"RoundedBorderRadius")
         {
             background.roundedBorderRadius = getSharedRenderer()->getRoundedBorderRadius();
         }
-        else if (property == "TextColor")
+        else if (property == U"TextColor")
             priv::dev::setOptionalPropertyValue(text.color, getSharedRenderer()->getTextColor(), priv::dev::ComponentState::Normal);
-        else if (property == "TextColorDown")
+        else if (property == U"TextColorDown")
             priv::dev::setOptionalPropertyValue(text.color, getSharedRenderer()->getTextColorDown(), priv::dev::ComponentState::Active);
-        else if (property == "TextColorHover")
+        else if (property == U"TextColorHover")
             priv::dev::setOptionalPropertyValue(text.color, getSharedRenderer()->getTextColorHover(), priv::dev::ComponentState::Hover);
-        else if (property == "TextColorDownHover")
+        else if (property == U"TextColorDownHover")
             priv::dev::setOptionalPropertyValue(text.color, getSharedRenderer()->getTextColorDownHover(), priv::dev::ComponentState::ActiveHover);
-        else if (property == "TextColorDisabled")
+        else if (property == U"TextColorDisabled")
             priv::dev::setOptionalPropertyValue(text.color, getSharedRenderer()->getTextColorDisabled(), priv::dev::ComponentState::Disabled);
-        else if (property == "TextColorDownDisabled")
+        else if (property == U"TextColorDownDisabled")
             priv::dev::setOptionalPropertyValue(text.color, getSharedRenderer()->getTextColorDownDisabled(), priv::dev::ComponentState::DisabledActive);
-        else if (property == "TextColorFocused")
+        else if (property == U"TextColorFocused")
             priv::dev::setOptionalPropertyValue(text.color, getSharedRenderer()->getTextColorFocused(), priv::dev::ComponentState::Focused);
-        else if (property == "TextColorDownFocused")
+        else if (property == U"TextColorDownFocused")
             priv::dev::setOptionalPropertyValue(text.color, getSharedRenderer()->getTextColorDownFocused(), priv::dev::ComponentState::FocusedActive);
-        else if (property == "TextStyle")
+        else if (property == U"TextStyle")
             priv::dev::setOptionalPropertyValue(text.style, getSharedRenderer()->getTextStyle(), priv::dev::ComponentState::Normal);
-        else if (property == "TextStyleDown")
+        else if (property == U"TextStyleDown")
             priv::dev::setOptionalPropertyValue(text.style, getSharedRenderer()->getTextStyleDown(), priv::dev::ComponentState::Active);
-        else if (property == "TextStyleHover")
+        else if (property == U"TextStyleHover")
             priv::dev::setOptionalPropertyValue(text.style, getSharedRenderer()->getTextStyleHover(), priv::dev::ComponentState::Hover);
-        else if (property == "TextStyleDownHover")
+        else if (property == U"TextStyleDownHover")
             priv::dev::setOptionalPropertyValue(text.style, getSharedRenderer()->getTextStyleDownHover(), priv::dev::ComponentState::ActiveHover);
-        else if (property == "TextStyleDisabled")
+        else if (property == U"TextStyleDisabled")
             priv::dev::setOptionalPropertyValue(text.style, getSharedRenderer()->getTextStyleDisabled(), priv::dev::ComponentState::Disabled);
-        else if (property == "TextStyleDownDisabled")
+        else if (property == U"TextStyleDownDisabled")
             priv::dev::setOptionalPropertyValue(text.style, getSharedRenderer()->getTextStyleDownDisabled(), priv::dev::ComponentState::DisabledActive);
-        else if (property == "TextStyleFocused")
+        else if (property == U"TextStyleFocused")
             priv::dev::setOptionalPropertyValue(text.style, getSharedRenderer()->getTextStyleFocused(), priv::dev::ComponentState::Focused);
-        else if (property == "TextStyleDownFocused")
+        else if (property == U"TextStyleDownFocused")
             priv::dev::setOptionalPropertyValue(text.style, getSharedRenderer()->getTextStyleDownFocused(), priv::dev::ComponentState::FocusedActive);
-        else if (property == "Texture")
+        else if (property == U"Texture")
             priv::dev::setOptionalPropertyValue(background.texture, getSharedRenderer()->getTexture(), priv::dev::ComponentState::Normal);
-        else if (property == "TextureDown")
+        else if (property == U"TextureDown")
             priv::dev::setOptionalPropertyValue(background.texture, getSharedRenderer()->getTextureDown(), priv::dev::ComponentState::Active);
-        else if (property == "TextureHover")
+        else if (property == U"TextureHover")
             priv::dev::setOptionalPropertyValue(background.texture, getSharedRenderer()->getTextureHover(), priv::dev::ComponentState::Hover);
-        else if (property == "TextureDownHover")
+        else if (property == U"TextureDownHover")
             priv::dev::setOptionalPropertyValue(background.texture, getSharedRenderer()->getTextureDownHover(), priv::dev::ComponentState::ActiveHover);
-        else if (property == "TextureDisabled")
+        else if (property == U"TextureDisabled")
             priv::dev::setOptionalPropertyValue(background.texture, getSharedRenderer()->getTextureDisabled(), priv::dev::ComponentState::Disabled);
-        else if (property == "TextureDownDisabled")
+        else if (property == U"TextureDownDisabled")
             priv::dev::setOptionalPropertyValue(background.texture, getSharedRenderer()->getTextureDownDisabled(), priv::dev::ComponentState::Disabled);
-        else if (property == "TextureFocused")
+        else if (property == U"TextureFocused")
             priv::dev::setOptionalPropertyValue(background.texture, getSharedRenderer()->getTextureFocused(), priv::dev::ComponentState::Focused);
-        else if (property == "TextureDownFocused")
+        else if (property == U"TextureDownFocused")
             priv::dev::setOptionalPropertyValue(background.texture, getSharedRenderer()->getTextureDownFocused(), priv::dev::ComponentState::FocusedActive);
-        else if (property == "BorderColor")
+        else if (property == U"BorderColor")
             priv::dev::setOptionalPropertyValue(background.borderColor, getSharedRenderer()->getBorderColor(), priv::dev::ComponentState::Normal);
-        else if (property == "BorderColorDown")
+        else if (property == U"BorderColorDown")
             priv::dev::setOptionalPropertyValue(background.borderColor, getSharedRenderer()->getBorderColorDown(), priv::dev::ComponentState::Active);
-        else if (property == "BorderColorHover")
+        else if (property == U"BorderColorHover")
             priv::dev::setOptionalPropertyValue(background.borderColor, getSharedRenderer()->getBorderColorHover(), priv::dev::ComponentState::Hover);
-        else if (property == "BorderColorDownHover")
+        else if (property == U"BorderColorDownHover")
             priv::dev::setOptionalPropertyValue(background.borderColor, getSharedRenderer()->getBorderColorDownHover(), priv::dev::ComponentState::ActiveHover);
-        else if (property == "BorderColorDisabled")
+        else if (property == U"BorderColorDisabled")
             priv::dev::setOptionalPropertyValue(background.borderColor, getSharedRenderer()->getBorderColorDisabled(), priv::dev::ComponentState::Disabled);
-        else if (property == "BorderColorDownDisabled")
+        else if (property == U"BorderColorDownDisabled")
             priv::dev::setOptionalPropertyValue(background.borderColor, getSharedRenderer()->getBorderColorDownDisabled(), priv::dev::ComponentState::DisabledActive);
-        else if (property == "BorderColorFocused")
+        else if (property == U"BorderColorFocused")
             priv::dev::setOptionalPropertyValue(background.borderColor, getSharedRenderer()->getBorderColorFocused(), priv::dev::ComponentState::Focused);
-        else if (property == "BorderColorDownFocused")
+        else if (property == U"BorderColorDownFocused")
             priv::dev::setOptionalPropertyValue(background.borderColor, getSharedRenderer()->getBorderColorDownFocused(), priv::dev::ComponentState::FocusedActive);
-        else if (property == "BackgroundColor")
+        else if (property == U"BackgroundColor")
             priv::dev::setOptionalPropertyValue(background.color, getSharedRenderer()->getBackgroundColor(), priv::dev::ComponentState::Normal);
-        else if (property == "BackgroundColorDown")
+        else if (property == U"BackgroundColorDown")
             priv::dev::setOptionalPropertyValue(background.color, getSharedRenderer()->getBackgroundColorDown(), priv::dev::ComponentState::Active);
-        else if (property == "BackgroundColorHover")
+        else if (property == U"BackgroundColorHover")
             priv::dev::setOptionalPropertyValue(background.color, getSharedRenderer()->getBackgroundColorHover(), priv::dev::ComponentState::Hover);
-        else if (property == "BackgroundColorDownHover")
+        else if (property == U"BackgroundColorDownHover")
             priv::dev::setOptionalPropertyValue(background.color, getSharedRenderer()->getBackgroundColorDownHover(), priv::dev::ComponentState::ActiveHover);
-        else if (property == "BackgroundColorDisabled")
+        else if (property == U"BackgroundColorDisabled")
             priv::dev::setOptionalPropertyValue(background.color, getSharedRenderer()->getBackgroundColorDisabled(), priv::dev::ComponentState::Disabled);
-        else if (property == "BackgroundColorDownDisabled")
+        else if (property == U"BackgroundColorDownDisabled")
             priv::dev::setOptionalPropertyValue(background.color, getSharedRenderer()->getBackgroundColorDownDisabled(), priv::dev::ComponentState::DisabledActive);
-        else if (property == "BackgroundColorFocused")
+        else if (property == U"BackgroundColorFocused")
             priv::dev::setOptionalPropertyValue(background.color, getSharedRenderer()->getBackgroundColorFocused(), priv::dev::ComponentState::Focused);
-        else if (property == "BackgroundColorDownFocused")
+        else if (property == U"BackgroundColorDownFocused")
             priv::dev::setOptionalPropertyValue(background.color, getSharedRenderer()->getBackgroundColorDownFocused(), priv::dev::ComponentState::FocusedActive);
-        else if (property == "TextOutlineThickness")
+        else if (property == U"TextOutlineThickness")
         {
             m_textComponent->setOutlineThickness(getSharedRenderer()->getTextOutlineThickness());
+            updateTextPosition();
         }
-        else if (property == "TextOutlineColor")
+        else if (property == U"TextOutlineColor")
         {
             m_textComponent->setOutlineColor(getSharedRenderer()->getTextOutlineColor());
         }
-        else if ((property == "Opacity") || (property == "OpacityDisabled"))
+        else if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
             ClickableWidget::rendererChanged(property);
             m_textComponent->setOpacity(m_opacityCached);
             m_backgroundComponent->setOpacity(m_opacityCached);
         }
-        else if (property == "Font")
+        else if (property == U"Font")
         {
             ClickableWidget::rendererChanged(property);
 
             m_textComponent->setFont(m_fontCached);
-            setText(getText());
+            updateTextSize();
         }
         else
             ClickableWidget::rendererChanged(property);
@@ -460,9 +447,7 @@ namespace tgui
         auto node = ClickableWidget::save(renderers);
 
         if (!m_string.empty())
-            node->propertyValuePairs["Text"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_string));
-        if (m_textSize > 0)
-            node->propertyValuePairs["TextSize"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_textSize));
+            node->propertyValuePairs[U"Text"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_string));
 
         // Don't store size when auto-sizing
         if (m_autoSize)
@@ -477,10 +462,8 @@ namespace tgui
     {
         ClickableWidget::load(node, renderers);
 
-        if (node->propertyValuePairs["Text"])
-            setText(Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs["Text"]->value).getString());
-        if (node->propertyValuePairs["TextSize"])
-            setTextSize(node->propertyValuePairs["TextSize"]->value.toInt());
+        if (node->propertyValuePairs[U"Text"])
+            setText(Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs[U"Text"]->value).getString());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -506,14 +489,26 @@ namespace tgui
             const float spaceAroundText = m_textComponent->getLineHeight();
             const Outline& borders = m_backgroundComponent->getBorders();
             Widget::setSize({m_textComponent->getSize().x + spaceAroundText + borders.getLeft() + borders.getRight(),
-                             m_textComponent->getLineHeight() * 1.25f + borders.getTop() + borders.getBottom()});
+                             std::round(m_textComponent->getLineHeight() * 1.25f) + borders.getTop() + borders.getBottom()});
         }
 
         m_backgroundComponent->setSize(getSize());
 
-        // Recalculate the text size (needed when auto-sizing or to update whether letters are placed horizontally or vertically)
-        if (!m_updatingSizeWhileSettingText)
-            setText(getText());
+        // Recalculate the text size (needed when auto-sizing)
+        if (!m_updatingTextSize)
+            updateTextSize();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void ButtonBase::updateTextPosition()
+    {
+        const Outline& borders = m_backgroundComponent->getBorders();
+        m_textPosition.x.updateParentSize(getSize().x - borders.getLeft() - borders.getRight());
+        m_textPosition.y.updateParentSize(getSize().y - borders.getTop() - borders.getBottom());
+
+        m_textComponent->setPosition({m_textPosition.x.getValue() - m_textOrigin.x * m_textComponent->getSize().x,
+                                      m_textPosition.y.getValue() - m_textOrigin.y * m_textComponent->getSize().y});
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -544,6 +539,10 @@ namespace tgui
 
         m_backgroundComponent->addComponent(m_textComponent);
         addComponent(m_backgroundComponent);
+
+        m_textStyleChangedCallbackId = text.style.connectCallback([this]{
+            updateTextPosition();
+        });
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -566,7 +565,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ButtonBase::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void ButtonBase::draw(BackendRenderTarget& target, RenderStates states) const
     {
         for (auto& component : m_components)
             component->draw(target, states);

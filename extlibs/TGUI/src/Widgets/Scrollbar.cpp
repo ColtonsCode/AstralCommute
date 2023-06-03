@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -29,13 +29,15 @@
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char Scrollbar::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     Scrollbar::Scrollbar(const char* typeName, bool initRenderer) :
         Widget{typeName, false}
     {
-        m_draggableWidget = true;
-
         if (initRenderer)
         {
             m_renderer = aurora::makeCopied<ScrollbarRenderer>();
@@ -55,7 +57,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Scrollbar::Ptr Scrollbar::copy(Scrollbar::ConstPtr scrollbar)
+    Scrollbar::Ptr Scrollbar::copy(const Scrollbar::ConstPtr& scrollbar)
     {
         if (scrollbar)
             return std::static_pointer_cast<Scrollbar>(scrollbar->clone());
@@ -82,13 +84,6 @@ namespace tgui
     ScrollbarRenderer* Scrollbar::getRenderer()
     {
         return aurora::downcast<ScrollbarRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    const ScrollbarRenderer* Scrollbar::getRenderer() const
-    {
-        return aurora::downcast<const ScrollbarRenderer*>(Widget::getRenderer());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -261,7 +256,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Scrollbar::leftMousePressed(Vector2f pos)
+    bool Scrollbar::leftMousePressed(Vector2f pos)
     {
         pos -= getPosition();
 
@@ -307,6 +302,8 @@ namespace tgui
         // Refresh the scrollbar value
         if (!m_mouseDownOnArrow)
             mouseMoved(pos + getPosition());
+
+        return !m_mouseDownOnArrow;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -588,18 +585,39 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    bool Scrollbar::mouseWheelScrolled(float delta, Vector2f pos)
+    bool Scrollbar::scrolled(float delta, Vector2f pos, bool touch)
     {
-        if (static_cast<int>(m_value) - static_cast<int>(delta * m_scrollAmount) < 0)
+        const auto oldValue = m_value;
+
+        const float amountToScroll = touch ? delta : (delta * m_scrollAmount);
+        if (static_cast<int>(m_value) - static_cast<int>(amountToScroll) < 0)
             setValue(0);
         else
-            setValue(static_cast<unsigned int>(m_value - (delta * m_scrollAmount)));
+            setValue(static_cast<unsigned int>(m_value - (amountToScroll)));
 
         // Update over which part the mouse is hovering
         if (isMouseOnWidget(pos - getPosition()))
             mouseMoved(pos - getPosition());
 
-        return true;
+        // If we aren't stuck at the lowest or highest value then we return true to mark the mouse wheel event as processed
+        const bool scrollingIsPossible = ((oldValue != 0) || (delta <= 0)) && ((oldValue != m_maximum - m_viewportSize) || (delta >= 0));
+        if (scrollingIsPossible)
+        {
+            m_lastSuccessfulScrollTime = std::chrono::steady_clock::now();
+            m_lastSuccessfulScrollPos = pos;
+            return true;
+        }
+
+        // If the mouse moved then make sure scrolling is no longer locked to this widget
+        if (pos != m_lastSuccessfulScrollPos)
+            m_lastSuccessfulScrollTime = std::chrono::steady_clock::time_point();
+
+        // We can't scroll any further. In this case we want to let the event be handled by our parent in case of nested
+        // scrollbars, but we don't want to do this when the user accidentally scrolled a bit too far.
+        // So we will absorb the event (by returning true) if a previous scroll event was recent, or let our parent
+        // handle the event (by returning false) if we were already stuck at the end of the scrollbar for a while.
+        return ((m_lastSuccessfulScrollTime != std::chrono::steady_clock::time_point())
+             && (Duration{std::chrono::steady_clock::now() - m_lastSuccessfulScrollTime} <= Duration{std::chrono::seconds(1)}));
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -779,7 +797,7 @@ namespace tgui
 
     void Scrollbar::rendererChanged(const String& property)
     {
-        if (property == "TextureTrack")
+        if (property == U"TextureTrack")
         {
             m_spriteTrack.setTexture(getSharedRenderer()->getTextureTrack());
             if (m_sizeSet)
@@ -794,70 +812,70 @@ namespace tgui
                 m_sizeSet = false;
             }
         }
-        else if (property == "TextureTrackHover")
+        else if (property == U"TextureTrackHover")
         {
             m_spriteTrackHover.setTexture(getSharedRenderer()->getTextureTrackHover());
         }
-        else if (property == "TextureThumb")
+        else if (property == U"TextureThumb")
         {
             m_spriteThumb.setTexture(getSharedRenderer()->getTextureThumb());
             updateSize();
         }
-        else if (property == "TextureThumbHover")
+        else if (property == U"TextureThumbHover")
         {
             m_spriteThumbHover.setTexture(getSharedRenderer()->getTextureThumbHover());
         }
-        else if (property == "TextureArrowUp")
+        else if (property == U"TextureArrowUp")
         {
             m_spriteArrowUp.setTexture(getSharedRenderer()->getTextureArrowUp());
             updateSize();
         }
-        else if (property == "TextureArrowUpHover")
+        else if (property == U"TextureArrowUpHover")
         {
             m_spriteArrowUpHover.setTexture(getSharedRenderer()->getTextureArrowUpHover());
         }
-        else if (property == "TextureArrowDown")
+        else if (property == U"TextureArrowDown")
         {
             m_spriteArrowDown.setTexture(getSharedRenderer()->getTextureArrowDown());
             updateSize();
         }
-        else if (property == "TextureArrowDownHover")
+        else if (property == U"TextureArrowDownHover")
         {
             m_spriteArrowDownHover.setTexture(getSharedRenderer()->getTextureArrowDownHover());
         }
-        else if (property == "TrackColor")
+        else if (property == U"TrackColor")
         {
             m_trackColorCached = getSharedRenderer()->getTrackColor();
         }
-        else if (property == "TrackColorHover")
+        else if (property == U"TrackColorHover")
         {
             m_trackColorHoverCached = getSharedRenderer()->getTrackColorHover();
         }
-        else if (property == "ThumbColor")
+        else if (property == U"ThumbColor")
         {
             m_thumbColorCached = getSharedRenderer()->getThumbColor();
         }
-        else if (property == "ThumbColorHover")
+        else if (property == U"ThumbColorHover")
         {
             m_thumbColorHoverCached = getSharedRenderer()->getThumbColorHover();
         }
-        else if (property == "ArrowBackgroundColor")
+        else if (property == U"ArrowBackgroundColor")
         {
             m_arrowBackgroundColorCached = getSharedRenderer()->getArrowBackgroundColor();
         }
-        else if (property == "ArrowBackgroundColorHover")
+        else if (property == U"ArrowBackgroundColorHover")
         {
             m_arrowBackgroundColorHoverCached = getSharedRenderer()->getArrowBackgroundColorHover();
         }
-        else if (property == "ArrowColor")
+        else if (property == U"ArrowColor")
         {
             m_arrowColorCached = getSharedRenderer()->getArrowColor();
         }
-        else if (property == "ArrowColorHover")
+        else if (property == U"ArrowColorHover")
         {
             m_arrowColorHoverCached = getSharedRenderer()->getArrowColorHover();
         }
-        else if ((property == "Opacity") || (property == "OpacityDisabled"))
+        else if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
             Widget::rendererChanged(property);
 
@@ -880,11 +898,11 @@ namespace tgui
     {
         auto node = Widget::save(renderers);
 
-        node->propertyValuePairs["AutoHide"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_autoHide));
-        node->propertyValuePairs["ViewportSize"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_viewportSize));
-        node->propertyValuePairs["Maximum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_maximum));
-        node->propertyValuePairs["Value"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_value));
-        node->propertyValuePairs["ScrollAmount"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_scrollAmount));
+        node->propertyValuePairs[U"AutoHide"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_autoHide));
+        node->propertyValuePairs[U"ViewportSize"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_viewportSize));
+        node->propertyValuePairs[U"Maximum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_maximum));
+        node->propertyValuePairs[U"Value"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_value));
+        node->propertyValuePairs[U"ScrollAmount"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_scrollAmount));
 
         return node;
     }
@@ -895,16 +913,16 @@ namespace tgui
     {
         Widget::load(node, renderers);
 
-        if (node->propertyValuePairs["ViewportSize"])
-            setViewportSize(node->propertyValuePairs["ViewportSize"]->value.toInt());
-        if (node->propertyValuePairs["Maximum"])
-            setMaximum(node->propertyValuePairs["Maximum"]->value.toInt());
-        if (node->propertyValuePairs["Value"])
-            setValue(node->propertyValuePairs["Value"]->value.toInt());
-        if (node->propertyValuePairs["ScrollAmount"])
-            setScrollAmount(node->propertyValuePairs["ScrollAmount"]->value.toInt());
-        if (node->propertyValuePairs["AutoHide"])
-            setAutoHide(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["AutoHide"]->value).getBool());
+        if (node->propertyValuePairs[U"ViewportSize"])
+            setViewportSize(node->propertyValuePairs[U"ViewportSize"]->value.toUInt());
+        if (node->propertyValuePairs[U"Maximum"])
+            setMaximum(node->propertyValuePairs[U"Maximum"]->value.toUInt());
+        if (node->propertyValuePairs[U"Value"])
+            setValue(node->propertyValuePairs[U"Value"]->value.toUInt());
+        if (node->propertyValuePairs[U"ScrollAmount"])
+            setScrollAmount(node->propertyValuePairs[U"ScrollAmount"]->value.toUInt());
+        if (node->propertyValuePairs[U"AutoHide"])
+            setAutoHide(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"AutoHide"]->value).getBool());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -931,7 +949,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Scrollbar::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void Scrollbar::draw(BackendRenderTarget& target, RenderStates states) const
     {
         // Don't draw the scrollbar when it is not needed
         if (m_autoHide && (m_maximum <= m_viewportSize))
@@ -960,19 +978,19 @@ namespace tgui
 
             if (m_verticalScroll)
             {
-                target.drawTriangles(states, {
+                target.drawTriangle(states,
                     {{m_arrowUp.width / 5, m_arrowUp.height * 4/5}, arrowVertexColor},
                     {{m_arrowUp.width / 2, m_arrowUp.height / 5}, arrowVertexColor},
                     {{m_arrowUp.width * 4/5, m_arrowUp.height * 4/5}, arrowVertexColor}
-                });
+                );
             }
             else // Spin button lies horizontal
             {
-                target.drawTriangles(states, {
+                target.drawTriangle(states,
                     {{m_arrowUp.width * 4/5, m_arrowUp.height / 5}, arrowVertexColor},
                     {{m_arrowUp.width / 5, m_arrowUp.height / 2}, arrowVertexColor},
                     {{m_arrowUp.width * 4/5, m_arrowUp.height * 4/5}, arrowVertexColor}
-                });
+                );
             }
         }
 
@@ -1036,21 +1054,28 @@ namespace tgui
 
             if (m_verticalScroll)
             {
-                target.drawTriangles(states, {
+                target.drawTriangle(states,
                     {{m_arrowDown.width / 5, m_arrowDown.height / 5}, arrowVertexColor},
                     {{m_arrowDown.width / 2, m_arrowDown.height * 4/5}, arrowVertexColor},
                     {{m_arrowDown.width * 4/5, m_arrowDown.height / 5}, arrowVertexColor}
-                });
+                );
             }
             else // Spin button lies horizontal
             {
-                target.drawTriangles(states, {
+                target.drawTriangle(states,
                     {{m_arrowDown.width / 5, m_arrowDown.height / 5}, arrowVertexColor},
                     {{m_arrowDown.width * 4/5, m_arrowDown.height / 2}, arrowVertexColor},
                     {{m_arrowDown.width / 5, m_arrowDown.height * 4/5}, arrowVertexColor}
-                });
+                );
             }
         }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr Scrollbar::clone() const
+    {
+        return std::make_shared<Scrollbar>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1070,7 +1095,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ScrollbarChildWidget::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void ScrollbarChildWidget::draw(BackendRenderTarget& target, RenderStates states) const
     {
         states.transform.translate(getPosition());
         Scrollbar::draw(target, states);

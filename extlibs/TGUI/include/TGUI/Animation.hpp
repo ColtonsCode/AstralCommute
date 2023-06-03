@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -28,17 +28,20 @@
 
 #include <TGUI/Layout.hpp>
 #include <TGUI/Duration.hpp>
-#include <functional>
-#include <memory>
+
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <functional>
+    #include <memory>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
     class Widget;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /// @brief Type of animation to show/hide widget
+    /// @brief Type of effect to show/hide widget
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     enum class ShowEffectType
     {
@@ -55,7 +58,16 @@ namespace tgui
         SlideFromBottom = SlideToTop  //!< Slide from bottom to show or to the top to hide
     };
 
-    using ShowAnimationType TGUI_DEPRECATED("ShowAnimationType was renamed to ShowEffectType") = ShowEffectType;
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /// @brief Type of animation
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    enum class AnimationType
+    {
+        Move,       //!< Position is being changed
+        Resize,     //!< Size is being changed
+        Opacity,    //!< Opacity is being changed
+    };
 
 
     namespace priv
@@ -65,32 +77,24 @@ namespace tgui
         class TGUI_API Animation
         {
         public:
-            enum class Type
-            {
-                None = 0,
-                Move = 1,
-                Resize = 2,
-                Fade = 4
-            };
 
             // Move constructor has to be explicitly declared since this class has a destructor
-            Animation() = default;
             Animation(const Animation&) = default;
             Animation(Animation&&) = default;
             Animation& operator=(const Animation&) = default;
             Animation& operator=(Animation&&) = default;
             virtual ~Animation() = default;
 
-            Type getType() const;
+            TGUI_NODISCARD AnimationType getType() const;
 
             virtual bool update(Duration elapsedTime) = 0;
             virtual void finish();
 
         protected:
-            Animation(Type type, std::shared_ptr<Widget> widget, Duration duration, std::function<void()> finishedCallback);
+            Animation(AnimationType type, std::shared_ptr<Widget> widget, Duration duration, std::function<void()> finishedCallback);
 
         protected:
-            Type m_type = Type::None;
+            AnimationType m_type;
             std::shared_ptr<Widget> m_widget;
 
             Duration m_totalDuration;

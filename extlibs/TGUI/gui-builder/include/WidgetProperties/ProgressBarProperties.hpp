@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,11 +27,10 @@
 #define TGUI_GUI_BUILDER_PROGRESS_BAR_PROPERTIES_HPP
 
 #include "WidgetProperties.hpp"
-#include <TGUI/Widgets/ProgressBar.hpp>
 
 struct ProgressBarProperties : WidgetProperties
 {
-    void updateProperty(tgui::Widget::Ptr widget, const tgui::String& property, const tgui::String& value) const override
+    void updateProperty(const tgui::Widget::Ptr& widget, const tgui::String& property, const tgui::String& value) const override
     {
         auto progressBar = widget->cast<tgui::ProgressBar>();
         if (property == "Minimum")
@@ -50,7 +49,7 @@ struct ProgressBarProperties : WidgetProperties
             WidgetProperties::updateProperty(widget, property, value);
     }
 
-    PropertyValueMapPair initProperties(tgui::Widget::Ptr widget) const override
+    TGUI_NODISCARD PropertyValueMapPair initProperties(const tgui::Widget::Ptr& widget) const override
     {
         auto pair = WidgetProperties::initProperties(widget);
         auto progressBar = widget->cast<tgui::ProgressBar>();
@@ -76,7 +75,7 @@ struct ProgressBarProperties : WidgetProperties
 
 private:
 
-    static tgui::ProgressBar::FillDirection deserializeFillDirection(tgui::String value)
+    TGUI_NODISCARD static tgui::ProgressBar::FillDirection deserializeFillDirection(tgui::String value)
     {
         value = value.trim().toLower();
         if (value == "bottomtotop")
@@ -89,7 +88,7 @@ private:
             return tgui::ProgressBar::FillDirection::LeftToRight;
     }
 
-    static tgui::String serializeFillDirection(tgui::ProgressBar::FillDirection direction)
+    TGUI_NODISCARD static tgui::String serializeFillDirection(tgui::ProgressBar::FillDirection direction)
     {
         if (direction == tgui::ProgressBar::FillDirection::BottomToTop)
             return "BottomToTop";

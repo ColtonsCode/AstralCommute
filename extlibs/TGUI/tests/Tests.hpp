@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -36,44 +36,92 @@
 #endif
 
 #include "catch.hpp"
-#include <TGUI/GuiBase.hpp>
-#include <TGUI/Container.hpp>
-#include <TGUI/Widgets/ClickableWidget.hpp>
-#include <TGUI/Widgets/Panel.hpp>
-#include <TGUI/Loading/Theme.hpp>
-#include <TGUI/Loading/Serializer.hpp>
 
-#if TGUI_HAS_BACKEND_SFML
+#include <memory>
+#include <chrono>
+
+#if TGUI_HAS_BACKEND_SFML_GRAPHICS
     #include <SFML/Graphics/RenderTexture.hpp>
-    #include <TGUI/Backends/SFML/GuiSFML.hpp>
+    #if TGUI_BUILD_AS_CXX_MODULE
+        import tgui.backend.sfml_graphics;
+    #else
+        #include <TGUI/Backend/SFML-Graphics.hpp>
+    #endif
 
-    #define TEST_DRAW_INIT(width, height, widget) \
-                sf::RenderTexture target; \
-                target.create(width, height); \
-                tgui::GuiSFML gui{target}; \
-                gui.add(widget);
+    #if SFML_VERSION_MAJOR >= 3
+        #define TEST_DRAW_INIT(width, height, widget) \
+                    tgui::BackendGui* guiPtr = globalGui; \
+                    std::unique_ptr<tgui::BackendGui> guiUniquePtr; \
+                    std::unique_ptr<sf::RenderTexture> target; \
+                    if (std::dynamic_pointer_cast<tgui::BackendRendererSFML>(tgui::getBackend()->getRenderer())) \
+                    { \
+                        target = std::make_unique<sf::RenderTexture>(); \
+                        (void)target->create({width, height}); \
+                        guiUniquePtr = std::make_unique<tgui::SFML_GRAPHICS::Gui>(*target); \
+                        guiPtr = guiUniquePtr.get(); \
+                    } \
+                    tgui::BackendGui& gui{*guiPtr}; \
+                    gui.removeAllWidgets(); \
+                    gui.add(widget);
+    #else
+        #define TEST_DRAW_INIT(width, height, widget) \
+                    tgui::BackendGui* guiPtr = globalGui; \
+                    std::unique_ptr<tgui::BackendGui> guiUniquePtr; \
+                    std::unique_ptr<sf::RenderTexture> target; \
+                    if (std::dynamic_pointer_cast<tgui::BackendRendererSFML>(tgui::getBackend()->getRenderer())) \
+                    { \
+                        target = std::make_unique<sf::RenderTexture>(); \
+                        (void)target->create(width, height); \
+                        guiUniquePtr = std::make_unique<tgui::SFML_GRAPHICS::Gui>(*target); \
+                        guiPtr = guiUniquePtr.get(); \
+                    } \
+                    tgui::BackendGui& gui{*guiPtr}; \
+                    gui.removeAllWidgets(); \
+                    gui.add(widget);
+    #endif
 
     #ifdef TGUI_ENABLE_DRAW_TESTS
         #define TEST_DRAW(filename) \
-                    target.clear({25, 130, 10}); \
-                    gui.draw(); \
-                    target.display(); \
-                    target.getTexture().copyToImage().saveToFile(filename); \
-                    compareImageFiles(filename, "expected/" filename);
+                    if (std::dynamic_pointer_cast<tgui::BackendRendererSFML>(tgui::getBackend()->getRenderer())) \
+                    { \
+                        target->clear({25, 130, 10}); \
+                        gui.draw(); \
+                        target->display(); \
+                        (void)target->getTexture().copyToImage().saveToFile(filename); \
+                        compareImageFiles(filename, "expected/" filename); \
+                    } \
+                    else \
+                        gui.draw();
     #else
         #define TEST_DRAW(filename) \
-                    target.clear({25, 130, 10}); \
-                    gui.draw(); \
-                    target.display(); \
-                    target.getTexture().copyToImage().saveToFile(filename);
+                    if (std::dynamic_pointer_cast<tgui::BackendRendererSFML>(tgui::getBackend()->getRenderer())) \
+                    { \
+                        target->clear({25, 130, 10}); \
+                        gui.draw(); \
+                        target->display(); \
+                        (void)target->getTexture().copyToImage().saveToFile(filename); \
+                    } \
+                    else \
+                        gui.draw();
     #endif
-#else
-    // Drawing tests are currently unsupported in other backends
+
+#else // Drawing tests are currently unsupported in other backends
+    // Note that the code here has to be equivalent to the case where TGUI_HAS_BACKEND_SFML_GRAPHICS is
+    // set but the BackendRendererSFML isn't being used at runtime.
     #define TEST_DRAW_INIT(width, height, widget) \
-                GuiNull gui; \
+                tgui::BackendGui& gui{*globalGui}; \
+                gui.removeAllWidgets(); \
                 gui.add(widget);
 
-    #define TEST_DRAW(filename)
+    // We draw to the window, without clearing or presenting it
+    #define TEST_DRAW(filename) \
+                gui.draw();
+#endif
+
+#if TGUI_BUILD_AS_CXX_MODULE
+    import tgui;
+#else
+    #include <TGUI/TGUI.hpp>
 #endif
 
 static const std::chrono::milliseconds DOUBLE_CLICK_TIMEOUT = std::chrono::milliseconds(500);
@@ -86,14 +134,14 @@ tgui::String getClipboardContents();
 void mouseCallback(unsigned int& count, tgui::Vector2f pos);
 void genericCallback(unsigned int& count);
 
-void testWidgetSignals(tgui::Widget::Ptr widget);
-void testClickableWidgetSignals(tgui::ClickableWidget::Ptr widget);
-void testClickableWidgetSignals(tgui::Panel::Ptr widget);
+void testWidgetSignals(const tgui::Widget::Ptr& widget);
+void testClickableWidgetSignals(const tgui::ClickableWidget::Ptr& widget);
+void testClickableWidgetSignals(const tgui::Panel::Ptr& widget);
 
 void testWidgetRenderer(tgui::WidgetRenderer* renderer);
 
 template <typename WidgetType>
-void testSavingWidget(tgui::String name, std::shared_ptr<WidgetType> widget, bool loadFromTheme = true)
+void testSavingWidget(const tgui::String& name, std::shared_ptr<WidgetType> widget, bool loadFromTheme = true)
 {
     if (loadFromTheme)
     {
@@ -120,7 +168,7 @@ void testSavingWidget(tgui::String name, std::shared_ptr<WidgetType> widget, boo
     #pragma clang diagnostic push
     #pragma clang diagnostic ignored "-Wself-assign-overloaded"
 #endif
-        temp2 = temp2;
+        temp2 = temp2; // NOLINT(misc-redundant-expression)
 #if defined(__clang__)
     #pragma clang diagnostic pop
 #endif
@@ -158,18 +206,19 @@ void testSavingWidget(tgui::String name, std::shared_ptr<WidgetType> widget, boo
     }
 }
 
-class GuiNull : public tgui::GuiBase
+class GuiNull : public tgui::BackendGui
 {
 public:
     GuiNull()
     {
-        init();
         setAbsoluteViewport({0, 0, 200, 200});
         setAbsoluteView({0, 0, 200, 200});
     }
 
-    void draw() {}
-    void mainLoop() {}
+    void draw() override {}
+    void mainLoop(tgui::Color = {240, 240, 240}) override {}
 };
+
+extern tgui::BackendGui* globalGui;
 
 #endif // TGUI_TESTS_HPP

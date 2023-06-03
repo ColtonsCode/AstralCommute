@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,7 +25,7 @@
 
 #include <TGUI/TextureManager.hpp>
 #include <TGUI/Texture.hpp>
-#include <TGUI/Backend.hpp>
+#include <TGUI/Backend/Window/Backend.hpp>
 #include <TGUI/Exception.hpp>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -42,21 +42,21 @@ namespace tgui
         texture.setCopyCallback(&TextureManager::copyTexture);
         texture.setDestructCallback(&TextureManager::removeTexture);
 
-        const bool isSvg = ((filename.length() > 4) && (filename.substr(filename.length() - 4, 4).equalIgnoreCase(".svg")));
+        const bool isSvg = ((filename.length() > 4) && (viewEqualIgnoreCase(StringView(filename.c_str() + (filename.length() - 4), 4), U".svg")));
 
         // Look if we already had this image
         auto imageIt = m_imageMap.find(filename);
         if (imageIt != m_imageMap.end())
         {
             // Loop all our textures to find the one containing the image
-            for (auto dataIt = imageIt->second.begin(); dataIt != imageIt->second.end(); ++dataIt)
+            for (auto& dataHolder : imageIt->second)
             {
                 // We can reuse everything only if the image is loaded with the same settings
-                if (dataIt->smooth == smooth)
+                if (dataHolder.smooth == smooth)
                 {
                     // The exact same texture is now used at multiple places
-                    ++(dataIt->users);
-                    return dataIt->data;
+                    ++dataHolder.users;
+                    return dataHolder.data;
                 }
             }
         }
@@ -84,11 +84,8 @@ namespace tgui
         else // Not an svg
         {
             data->backendTexture = getBackend()->createTexture();
-            if (texture.getBackendTextureLoader()(*data->backendTexture, filename))
-            {
-                data->backendTexture->setSmooth(smooth);
+            if (texture.getBackendTextureLoader()(*data->backendTexture, filename, smooth))
                 return data;
-            }
         }
 
         // The image could not be loaded
@@ -102,7 +99,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void TextureManager::copyTexture(std::shared_ptr<TextureData> textureDataToCopy)
+    void TextureManager::copyTexture(const std::shared_ptr<TextureData>& textureDataToCopy)
     {
         // Loop all our textures to check if we already have this one
         for (auto& dataHolder : m_imageMap)
@@ -119,12 +116,12 @@ namespace tgui
             }
         }
 
-        throw Exception{"Trying to copy texture data that was not loaded by the TextureManager."};
+        throw Exception{U"Trying to copy texture data that was not loaded by the TextureManager."};
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void TextureManager::removeTexture(std::shared_ptr<TextureData> textureDataToRemove)
+    void TextureManager::removeTexture(const std::shared_ptr<TextureData>& textureDataToRemove)
     {
         // Loop all our textures to check which one it is
         for (auto imageIt = m_imageMap.begin(); imageIt != m_imageMap.end(); ++imageIt)
@@ -147,7 +144,7 @@ namespace tgui
             }
         }
 
-        throw Exception{"Trying to remove a texture that was not loaded by the TextureManager."};
+        throw Exception{U"Trying to remove a texture that was not loaded by the TextureManager."};
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

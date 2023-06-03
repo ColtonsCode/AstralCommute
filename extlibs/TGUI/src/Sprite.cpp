@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -26,9 +26,11 @@
 #include <TGUI/Sprite.hpp>
 #include <TGUI/Color.hpp>
 #include <TGUI/Optional.hpp>
-#include <TGUI/Backend.hpp>
+#include <TGUI/Backend/Window/Backend.hpp>
 
-#include <cmath>
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cmath>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -73,6 +75,23 @@ namespace tgui
         m_position   (std::move(other.m_position)),
         m_scalingType(std::move(other.m_scalingType))
     {
+        if (m_svgTexture)
+        {
+            TGUI_ASSERT(isBackendSet(), "Backend must still exist when Sprite is move-constructed");
+            getBackend()->unregisterSvgSprite(&other);
+            getBackend()->registerSvgSprite(this);
+        }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Sprite::~Sprite()
+    {
+        if (m_svgTexture)
+        {
+            TGUI_ASSERT(isBackendSet(), "Backend must still exist when Sprite is destroyed");
+            getBackend()->unregisterSvgSprite(this);
+        }
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -81,6 +100,9 @@ namespace tgui
     {
         if (this != &other)
         {
+            if (m_svgTexture)
+                getBackend()->unregisterSvgSprite(this);
+
             Sprite temp(other);
 
             std::swap(m_size,        temp.m_size);
@@ -105,6 +127,9 @@ namespace tgui
     {
         if (this != &other)
         {
+            if (m_svgTexture)
+                getBackend()->unregisterSvgSprite(this);
+
             m_size        = std::move(other.m_size);
             m_texture     = std::move(other.m_texture);
             m_svgTexture  = std::move(other.m_svgTexture);
@@ -116,6 +141,13 @@ namespace tgui
             m_rotation    = std::move(other.m_rotation);
             m_position    = std::move(other.m_position);
             m_scalingType = std::move(other.m_scalingType);
+
+            if (m_svgTexture)
+            {
+                TGUI_ASSERT(isBackendSet(), "Backend must still exist when Sprite is moved");
+                getBackend()->unregisterSvgSprite(&other);
+                getBackend()->registerSvgSprite(this);
+            }
         }
 
         return *this;
@@ -361,7 +393,12 @@ namespace tgui
         if (m_texture.getData()->svgImage)
         {
             if (!m_svgTexture)
+            {
                 m_svgTexture = getBackend()->createTexture();
+
+                TGUI_ASSERT(isBackendSet(), "Backend must still exist when SVG texture is loaded in Sprite");
+                getBackend()->registerSvgSprite(this);
+            }
 
             const Vector2u svgTextureSize{
                 static_cast<unsigned int>(std::round(getSize().x)),
@@ -550,6 +587,32 @@ namespace tgui
             {
                 vertex.texCoords.x += static_cast<float>(m_texture.getPartRect().left);
                 vertex.texCoords.y += static_cast<float>(m_texture.getPartRect().top);
+            }
+        }
+
+        // Normalize the texture coordinates
+        if (m_texture.getData()->svgImage)
+        {
+            const Vector2f svgTextureSize{std::round(getSize().x), std::round(getSize().y)};
+            if ((svgTextureSize.x != 0) && (svgTextureSize.y != 0))
+            {
+                for (auto& vertex : m_vertices)
+                {
+                    vertex.texCoords.x /= svgTextureSize.x;
+                    vertex.texCoords.y /= svgTextureSize.y;
+                }
+            }
+        }
+        else if (m_texture.getData()->backendTexture)
+        {
+            const Vector2f backendTextureSize{m_texture.getData()->backendTexture->getSize()};
+            if ((backendTextureSize.x != 0) && (backendTextureSize.y != 0))
+            {
+                for (auto& vertex : m_vertices)
+                {
+                    vertex.texCoords.x /= backendTextureSize.x;
+                    vertex.texCoords.y /= backendTextureSize.y;
+                }
             }
         }
     }

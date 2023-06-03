@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,14 +25,23 @@
 
 #include <TGUI/Texture.hpp>
 #include <TGUI/Global.hpp>
-#include <TGUI/Backend.hpp>
+#include <TGUI/Base64.hpp>
+#include <TGUI/Backend/Window/Backend.hpp>
 #include <TGUI/Exception.hpp>
 #include <TGUI/TextureManager.hpp>
-#include <TGUI/BackendTexture.hpp>
+#include <TGUI/Backend/Renderer/BackendTexture.hpp>
 #include <TGUI/Loading/ImageLoader.hpp>
 
-#include <memory>
-#include <cstdint>
+#if TGUI_HAS_RENDERER_BACKEND_SFML_GRAPHICS
+    #include <SFML/Graphics/Image.hpp>
+    #include <SFML/Graphics/Texture.hpp>
+    #include <SFML/Graphics/Shader.hpp>
+#endif
+
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <memory>
+    #include <cstdint>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -41,14 +50,14 @@ namespace tgui
     bool Texture::m_defaultSmooth = true;
 
     Texture::TextureLoaderFunc Texture::m_textureLoader = &TextureManager::getTexture;
-    Texture::BackendTextureLoaderFunc Texture::m_backendTextureLoader = [](BackendTextureBase& backendTexture, const String& filename)
+    Texture::BackendTextureLoaderFunc Texture::m_backendTextureLoader = [](BackendTexture& backendTexture, const String& filename, bool smooth)
         {
             Vector2u imageSize;
             auto pixelPtr = ImageLoader::loadFromFile(filename, imageSize);
             if (!pixelPtr)
                 return false;
 
-            return backendTexture.load(imageSize, std::move(pixelPtr));
+            return backendTexture.load(imageSize, std::move(pixelPtr), smooth);
         };
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -59,7 +68,7 @@ namespace tgui
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#if TGUI_HAS_BACKEND_SFML
+#if TGUI_HAS_RENDERER_BACKEND_SFML_GRAPHICS
     Texture::Texture(const sf::Texture& texture, const UIntRect& partRect, const UIntRect& middlePart)
     {
         load(texture, partRect, middlePart);
@@ -68,7 +77,7 @@ namespace tgui
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     Texture::Texture(const Texture& other) :
-#if TGUI_HAS_BACKEND_SFML
+#if TGUI_HAS_RENDERER_BACKEND_SFML_GRAPHICS
         m_shader          {other.m_shader},
 #endif
         m_data            {other.m_data},
@@ -86,7 +95,7 @@ namespace tgui
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     Texture::Texture(Texture&& other) noexcept :
-#if TGUI_HAS_BACKEND_SFML
+#if TGUI_HAS_RENDERER_BACKEND_SFML_GRAPHICS
         m_shader          {std::move(other.m_shader)},
 #endif
         m_data            {std::move(other.m_data)},
@@ -118,7 +127,7 @@ namespace tgui
         {
             Texture temp{other};
 
-#if TGUI_HAS_BACKEND_SFML
+#if TGUI_HAS_RENDERER_BACKEND_SFML_GRAPHICS
             std::swap(m_shader,           temp.m_shader);
 #endif
             std::swap(m_data,             temp.m_data);
@@ -139,7 +148,7 @@ namespace tgui
     {
         if (this != &other)
         {
-#if TGUI_HAS_BACKEND_SFML
+#if TGUI_HAS_RENDERER_BACKEND_SFML_GRAPHICS
             m_shader           = std::move(other.m_shader);
 #endif
             m_data             = std::move(other.m_data);
@@ -185,13 +194,13 @@ namespace tgui
         {
             data = m_textureLoader(*this, (getResourcePath() / id).asString(), smooth);
             if (!data)
-                throw Exception{"Failed to load '" + (getResourcePath() / id).asString() + "'"};
+                throw Exception{U"Failed to load '" + (getResourcePath() / id).asString() + U"'"};
         }
         else
         {
             data = m_textureLoader(*this, id, smooth);
             if (!data)
-                throw Exception{"Failed to load '" + id + "'"};
+                throw Exception{U"Failed to load '" + id + U"'"};
         }
 
         TGUI_ASSERT(data->svgImage || data->backendTexture, "TextureLoaderFunc returned non-nullptr but didn't initialized backendTexture or svgImage");
@@ -201,7 +210,7 @@ namespace tgui
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#if TGUI_HAS_BACKEND_SFML
+#if TGUI_HAS_RENDERER_BACKEND_SFML_GRAPHICS
     void Texture::load(const sf::Texture& texture, const UIntRect& partRect, const UIntRect& middleRect)
     {
         if (getData() && (m_destructCallback != nullptr))
@@ -216,23 +225,6 @@ namespace tgui
 #endif
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#ifndef TGUI_REMOVE_DEPRECATED_CODE
-    bool Texture::load(Vector2u size, const std::uint8_t* pixels, const UIntRect& partRect, const UIntRect& middleRect)
-    {
-        try
-        {
-            loadFromPixelData(size, pixels, partRect, middleRect);
-            return true;
-        }
-        catch (const Exception&)
-        {
-            return false;
-        }
-    }
-#endif
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     void Texture::loadFromMemory(const std::uint8_t* fileData, std::size_t fileDataSize, const UIntRect& partRect, const UIntRect& middleRect, bool smooth)
     {
         auto data = std::make_shared<TextureData>();
@@ -241,12 +233,10 @@ namespace tgui
         Vector2u imageSize;
         auto pixelPtr = ImageLoader::loadFromMemory(fileData, fileDataSize, imageSize);
         if (!pixelPtr)
-            throw Exception{"Failed to load texture from provided memory location (" + String(fileDataSize) + " bytes)"};
+            throw Exception{U"Failed to load texture from provided memory location (" + String(fileDataSize) + U" bytes)"};
 
-        if (!data->backendTexture->load(imageSize, std::move(pixelPtr)))
-            throw Exception{"Failed to load texture from pixels that were loaded from file in memory"};
-
-        data->backendTexture->setSmooth(smooth);
+        if (!data->backendTexture->load(imageSize, std::move(pixelPtr), smooth))
+            throw Exception{U"Failed to load texture from pixels that were loaded from file in memory"};
 
         m_id = "";
         setTextureData(data, partRect, middleRect);
@@ -259,15 +249,22 @@ namespace tgui
         auto data = std::make_shared<TextureData>();
         data->backendTexture = getBackend()->createTexture();
 
-        auto pixelPtr = std::make_unique<std::uint8_t[]>(size.x * size.y * 4);
+        auto pixelPtr = MakeUniqueForOverwrite<std::uint8_t[]>(size.x * size.y * 4);
         std::memcpy(pixelPtr.get(), pixels, size.x * size.y * 4);
-        if (!data->backendTexture->load(size, std::move(pixelPtr)))
-            throw Exception{"Failed to load texture from provided pixel data"};
 
-        data->backendTexture->setSmooth(smooth);
+        if (!data->backendTexture->load(size, std::move(pixelPtr), smooth))
+            throw Exception{U"Failed to load texture from provided pixel data"};
 
         m_id = "";
         setTextureData(data, partRect, middleRect);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    void Texture::loadFromBase64(CharStringView imageAsBase64, const UIntRect& partRect, const UIntRect& middleRect, bool smooth)
+    {
+        const std::vector<std::uint8_t> fileData = base64Decode(imageAsBase64);
+        loadFromMemory(fileData.data(), fileData.size(), partRect, middleRect, smooth);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -329,7 +326,7 @@ namespace tgui
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#if TGUI_HAS_BACKEND_SFML
+#if TGUI_HAS_RENDERER_BACKEND_SFML_GRAPHICS
     void Texture::setShader(sf::Shader* shader)
     {
         m_shader = shader;
@@ -383,7 +380,7 @@ namespace tgui
         return (m_id == right.m_id)
             && (!m_id.empty() || (m_data == right.m_data))
             && (m_middleRect == right.m_middleRect)
-#if TGUI_HAS_BACKEND_SFML
+#if TGUI_HAS_RENDERER_BACKEND_SFML_GRAPHICS
             && (m_shader == right.m_shader)
 #endif
             && (m_color == right.m_color);
@@ -450,7 +447,7 @@ namespace tgui
             m_destructCallback = nullptr;
         }
 
-        m_data = data;
+        m_data = std::move(data);
 
         if (partRect == UIntRect{})
         {
@@ -477,7 +474,7 @@ namespace tgui
                 if (m_partRect.width > 2 * middleRect.left)
                     m_middleRect.width = m_partRect.width - (2 * middleRect.left);
 
-                if (m_partRect.width > 2 * middleRect.left)
+                if (m_partRect.height > 2 * middleRect.top)
                     m_middleRect.height = m_partRect.height - (2 * middleRect.top);
             }
         }

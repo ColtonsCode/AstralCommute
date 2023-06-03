@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -31,7 +31,7 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Abstract class for box layout containers
@@ -41,8 +41,8 @@ namespace tgui
     {
     public:
 
-        typedef std::shared_ptr<BoxLayout> Ptr; //!< Shared widget pointer
-        typedef std::shared_ptr<const BoxLayout> ConstPtr; //!< Shared constant widget pointer
+        using Ptr = std::shared_ptr<BoxLayout>; //!< Shared widget pointer
+        using ConstPtr = std::shared_ptr<const BoxLayout>; //!< Shared constant widget pointer
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -59,16 +59,15 @@ namespace tgui
         /// @brief Returns the renderer, which gives access to functions that determine how the widget is displayed
         /// @return Temporary pointer to the renderer that may be shared with other widgets using the same renderer
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        BoxLayoutRenderer* getSharedRenderer();
-        const BoxLayoutRenderer* getSharedRenderer() const;
+        TGUI_NODISCARD BoxLayoutRenderer* getSharedRenderer() override;
+        TGUI_NODISCARD const BoxLayoutRenderer* getSharedRenderer() const override;
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @brief Returns the renderer, which gives access to functions that determine how the widget is displayed
         /// @return Temporary pointer to the renderer
         /// @warning After calling this function, the widget has its own copy of the renderer and it will no longer be shared.
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        BoxLayoutRenderer* getRenderer();
-        const BoxLayoutRenderer* getRenderer() const;
+        TGUI_NODISCARD BoxLayoutRenderer* getRenderer() override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -134,7 +133,7 @@ namespace tgui
         /// @return Widget of given index, or nullptr if index was too high
         ///
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Widget::Ptr get(std::size_t index) const;
+        TGUI_NODISCARD Widget::Ptr get(std::size_t index) const;
         using Container::get;
 
 

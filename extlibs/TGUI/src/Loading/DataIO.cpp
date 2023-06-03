@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,8 +27,12 @@
 #include <TGUI/Global.hpp>
 #include <TGUI/String.hpp>
 
-#include <cctype>
-#include <algorithm>
+#if TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <stdio.h> // EOF
+#else
+    #include <cctype> // isspace
+    #include <algorithm>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -107,7 +111,7 @@ namespace tgui
                     stream.read(&c, 1);
                     return word;
                 }
-                else if (!::isspace(c) && (c != '=') && (c != ';') && (c != '{') && (c != '}'))
+                else if (!std::isspace(static_cast<unsigned char>(c)) && (c != '=') && (c != ';') && (c != ':') && (c != '{') && (c != '}'))
                 {
                     stream.read(&c, 1);
 
@@ -301,7 +305,7 @@ namespace tgui
                     valueNode->listNode = true;
                     if (line.size() >= 3)
                     {
-                        valueNode->valueList.push_back("");
+                        valueNode->valueList.emplace_back("");
 
                         std::size_t i = 1;
                         while (i < line.size()-1)
@@ -310,7 +314,7 @@ namespace tgui
                             {
                                 i++;
                                 valueNode->valueList.back() = valueNode->valueList.back().trim();
-                                valueNode->valueList.push_back("");
+                                valueNode->valueList.emplace_back("");
                             }
                             else if (line[i] == '"')
                             {
@@ -369,6 +373,68 @@ namespace tgui
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+        String parseInheritance(std::stringstream& stream, const std::unique_ptr<DataIO::Node>& node, const String& sectionName)
+        {
+            // Read the colon from the stream
+            char chr;
+            stream.read(&chr, 1);
+            REMOVE_WHITESPACE_AND_COMMENTS(true)
+
+            String baseSectionName = readWord(stream);
+            if (baseSectionName.empty())
+                return "Expected name of base section to inherit from after ':'.";
+
+            const DataIO::Node* parentNode = node.get();
+            const DataIO::Node* baseSectionNode = nullptr;
+            while (!baseSectionNode && parentNode)
+            {
+                for (const auto& prevSections : parentNode->children)
+                {
+                    if (prevSections->name != baseSectionName)
+                        continue;
+
+                    baseSectionNode = prevSections.get();
+                    break;
+                }
+
+                parentNode = parentNode->parent;
+            }
+
+            if (!baseSectionNode)
+                return "Failed to find base section '" + baseSectionName + "' to inherit from.";
+
+            REMOVE_WHITESPACE_AND_COMMENTS(true)
+            if (stream.peek() != '{')
+                return "Expected '{' after specifying base section to inherit from.";
+
+            const auto& error = parseSection(stream, node, sectionName);
+            if (!error.empty())
+                return error;
+
+            const auto& sectionNode = node->children.back(); // This node was added by parseSection
+
+            // Copy properties that aren't overwritten
+            for (const auto& pair : baseSectionNode->propertyValuePairs)
+            {
+                const String& propertyName = pair.first;
+                if (sectionNode->propertyValuePairs.find(propertyName) == sectionNode->propertyValuePairs.end())
+                    sectionNode->propertyValuePairs[propertyName] = std::make_unique<DataIO::ValueNode>(*pair.second);
+            }
+
+            // Copy children that aren't overwritten
+            for (const auto& baseChildNode : baseSectionNode->children)
+            {
+                const auto it = std::find_if(sectionNode->children.begin(), sectionNode->children.end(),
+                    [&](const std::unique_ptr<DataIO::Node>& childNode){ return childNode->name == baseChildNode->name; });
+                if (it == sectionNode->children.end())
+                    sectionNode->children.push_back(std::make_unique<DataIO::Node>(*baseChildNode));
+            }
+
+            return "";
+        }
+
+        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
         String parseSection(std::stringstream& stream, const std::unique_ptr<DataIO::Node>& node, const String& sectionName)
         {
             // Create a new node for this section
@@ -385,7 +451,7 @@ namespace tgui
                 REMOVE_WHITESPACE_AND_COMMENTS(true)
 
                 String word = readWord(stream);
-                if (word == "")
+                if (word == U"")
                 {
                     if (stream.peek() == EOF)
                         return "Found EOF while trying to read property or nested section name.";
@@ -410,18 +476,24 @@ namespace tgui
                 REMOVE_WHITESPACE_AND_COMMENTS(true)
                 if (stream.peek() == '{')
                 {
-                    const String error = parseSection(stream, sectionNode, word);
+                    String error = parseSection(stream, sectionNode, word);
                     if (!error.empty())
                         return error;
                 }
                 else if (stream.peek() == '=')
                 {
-                    const String error = parseKeyValue(stream, sectionNode, word);
+                    String error = parseKeyValue(stream, sectionNode, word);
+                    if (!error.empty())
+                        return error;
+                }
+                else if (stream.peek() == ':')
+                {
+                    String error = parseInheritance(stream, sectionNode, word);
                     if (!error.empty())
                         return error;
                 }
                 else
-                    return "Expected '{' or '=', found '" + String(1, static_cast<char>(stream.peek())) + "' instead.";
+                    return "Expected '{', '=' or ':', found '" + String(1, static_cast<char>(stream.peek())) + "' instead.";
             }
 
             return "Found EOF while reading section.";
@@ -434,7 +506,7 @@ namespace tgui
             REMOVE_WHITESPACE_AND_COMMENTS(false)
 
             String word = readWord(stream);
-            if (word == "")
+            if (word == U"")
             {
                 REMOVE_WHITESPACE_AND_COMMENTS(true)
                 if (stream.peek() != '{')
@@ -446,8 +518,10 @@ namespace tgui
                 return parseSection(stream, root, word);
             else if (stream.peek() == '=')
                 return parseKeyValue(stream, root, word);
+            else if (stream.peek() == ':')
+                return parseInheritance(stream, root, word);
             else
-                return "Expected '{' or '=', found '" + String(1, static_cast<char>(stream.peek())) + "' instead.";
+                return "Expected '{', '=' or ':', found '" + String(1, static_cast<char>(stream.peek())) + "' instead.";
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -505,15 +579,15 @@ namespace tgui
             error = parseRootSection(stream, root);
             if (!error.empty())
             {
-                if (stream.tellg() != std::stringstream::pos_type(-1))
+                const auto position = stream.tellg();
+                if (position != std::stringstream::pos_type(-1))
                 {
                     String str = stream.str();
-                    auto position = static_cast<std::iterator_traits<String::const_iterator>::difference_type>(stream.tellg());
-                    std::size_t lineNumber = std::count(str.begin(), str.begin() + position, U'\n') + 1;
-                    throw Exception{"Error while parsing input at line " + String::fromNumber(lineNumber) + ". " + error};
+                    auto lineNumber = std::count(str.begin(), str.begin() + static_cast<std::ptrdiff_t>(position), U'\n') + 1;
+                    throw Exception{U"Error while parsing input at line " + String::fromNumber(lineNumber) + U". " + error};
                 }
                 else
-                    throw Exception{"Error while parsing input. " + error};
+                    throw Exception{U"Error while parsing input. " + error};
             }
         }
 

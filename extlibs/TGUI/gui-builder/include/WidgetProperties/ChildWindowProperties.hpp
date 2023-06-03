@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,11 +27,10 @@
 #define TGUI_GUI_BUILDER_CHILD_WINDOW_PROPERTIES_HPP
 
 #include "WidgetProperties.hpp"
-#include <TGUI/Widgets/ChildWindow.hpp>
 
 struct ChildWindowProperties : WidgetProperties
 {
-    void updateProperty(tgui::Widget::Ptr widget, const tgui::String& property, const tgui::String& value) const override
+    void updateProperty(const tgui::Widget::Ptr& widget, const tgui::String& property, const tgui::String& value) const override
     {
         auto childWindow = widget->cast<tgui::ChildWindow>();
         if (property == "TitleAlignment")
@@ -58,7 +57,7 @@ struct ChildWindowProperties : WidgetProperties
             WidgetProperties::updateProperty(widget, property, value);
     }
 
-    PropertyValueMapPair initProperties(tgui::Widget::Ptr widget) const override
+    TGUI_NODISCARD PropertyValueMapPair initProperties(const tgui::Widget::Ptr& widget) const override
     {
         auto pair = WidgetProperties::initProperties(widget);
         auto childWindow = widget->cast<tgui::ChildWindow>();
@@ -94,7 +93,7 @@ struct ChildWindowProperties : WidgetProperties
 
 private:
 
-    static tgui::ChildWindow::TitleAlignment deserializeTitleAlignment(tgui::String value)
+    TGUI_NODISCARD static tgui::ChildWindow::TitleAlignment deserializeTitleAlignment(tgui::String value)
     {
         value = value.trim().toLower();
         if (value == "right")
@@ -105,25 +104,25 @@ private:
             return tgui::ChildWindow::TitleAlignment::Left;
     }
 
-    static int deserializeTitleButtons(tgui::String value)
+    TGUI_NODISCARD static unsigned int deserializeTitleButtons(const tgui::String& value)
     {
-        int decodedTitleButtons = tgui::ChildWindow::TitleButton::None;
+        unsigned int decodedTitleButtons = tgui::ChildWindow::TitleButton::None;
         std::vector<tgui::String> titleButtons = tgui::Deserializer::split(value, '|');
         for (const auto& elem : titleButtons)
         {
             tgui::String requestedTitleButton = elem.trim().toLower();
             if (requestedTitleButton == "close")
-                decodedTitleButtons |= tgui::TextStyle::Bold;
+                decodedTitleButtons |= tgui::ChildWindow::TitleButton::Close;
             else if (requestedTitleButton == "maximize")
-                decodedTitleButtons |= tgui::TextStyle::Italic;
+                decodedTitleButtons |= tgui::ChildWindow::TitleButton::Maximize;
             else if (requestedTitleButton == "minimize")
-                decodedTitleButtons |= tgui::TextStyle::Underlined;
+                decodedTitleButtons |= tgui::ChildWindow::TitleButton::Minimize;
         }
 
         return decodedTitleButtons;
     }
 
-    static tgui::String serializeTitleAlignment(tgui::ChildWindow::TitleAlignment alignment)
+    TGUI_NODISCARD static tgui::String serializeTitleAlignment(tgui::ChildWindow::TitleAlignment alignment)
     {
         if (alignment == tgui::ChildWindow::TitleAlignment::Center)
             return "Center";
@@ -133,7 +132,7 @@ private:
             return "Left";
     }
 
-    static tgui::String serializeTitleButtons(unsigned int titleButtons)
+    TGUI_NODISCARD static tgui::String serializeTitleButtons(unsigned int titleButtons)
     {
         tgui::String serializedTitleButtons;
         if (titleButtons & tgui::ChildWindow::TitleButton::Minimize)

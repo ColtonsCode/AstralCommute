@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,7 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Widgets/Knob.hpp>
 
 TEST_CASE("[Knob]")
 {
@@ -192,8 +191,8 @@ TEST_CASE("[Knob]")
 
         SECTION("textured")
         {
-            tgui::Texture textureBackground("resources/Knob/Back.png");
-            tgui::Texture textureForeground("resources/Knob/Front.png");
+            tgui::Texture textureBackground("resources/KnobBack.png");
+            tgui::Texture textureForeground("resources/KnobFront.png");
 
             SECTION("set serialized property")
             {
@@ -234,7 +233,7 @@ TEST_CASE("[Knob]")
         knob->setMaximum(50);
         knob->setValue(20);
 
-        testSavingWidget("Knob", knob, false);
+        testSavingWidget("Knob", knob);
     }
 
     SECTION("Draw")

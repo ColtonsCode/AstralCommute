@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,12 +23,19 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include <TGUI/Widgets/SpinButton.hpp>
-#include <cmath>
+
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cmath>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char SpinButton::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     SpinButton::SpinButton(const char* typeName, bool initRenderer) :
@@ -57,7 +64,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    SpinButton::Ptr SpinButton::copy(SpinButton::ConstPtr spinButton)
+    SpinButton::Ptr SpinButton::copy(const SpinButton::ConstPtr& spinButton)
     {
         if (spinButton)
             return std::static_pointer_cast<SpinButton>(spinButton->clone());
@@ -84,13 +91,6 @@ namespace tgui
     SpinButtonRenderer* SpinButton::getRenderer()
     {
         return aurora::downcast<SpinButtonRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    const SpinButtonRenderer* SpinButton::getRenderer() const
-    {
-        return aurora::downcast<const SpinButtonRenderer*>(Widget::getRenderer());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -235,7 +235,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void SpinButton::leftMousePressed(Vector2f pos)
+    bool SpinButton::leftMousePressed(Vector2f pos)
     {
         ClickableWidget::leftMousePressed(pos);
 
@@ -270,6 +270,8 @@ namespace tgui
                 callMousePressPeriodically(m_PressedAt);
             }
         }
+
+        return false;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -317,53 +319,53 @@ namespace tgui
 
     void SpinButton::rendererChanged(const String& property)
     {
-        if (property == "Borders")
+        if (property == U"Borders")
         {
             m_bordersCached = getSharedRenderer()->getBorders();
             setSize(m_size);
         }
-        else if (property == "BorderBetweenArrows")
+        else if (property == U"BorderBetweenArrows")
         {
             m_borderBetweenArrowsCached = getSharedRenderer()->getBorderBetweenArrows();
             setSize(m_size);
         }
-        else if (property == "TextureArrowUp")
+        else if (property == U"TextureArrowUp")
         {
             m_spriteArrowUp.setTexture(getSharedRenderer()->getTextureArrowUp());
         }
-        else if (property == "TextureArrowUpHover")
+        else if (property == U"TextureArrowUpHover")
         {
             m_spriteArrowUpHover.setTexture(getSharedRenderer()->getTextureArrowUpHover());
         }
-        else if (property == "TextureArrowDown")
+        else if (property == U"TextureArrowDown")
         {
             m_spriteArrowDown.setTexture(getSharedRenderer()->getTextureArrowDown());
         }
-        else if (property == "TextureArrowDownHover")
+        else if (property == U"TextureArrowDownHover")
         {
             m_spriteArrowDownHover.setTexture(getSharedRenderer()->getTextureArrowDownHover());
         }
-        else if (property == "BorderColor")
+        else if (property == U"BorderColor")
         {
             m_borderColorCached = getSharedRenderer()->getBorderColor();
         }
-        else if (property == "BackgroundColor")
+        else if (property == U"BackgroundColor")
         {
             m_backgroundColorCached = getSharedRenderer()->getBackgroundColor();
         }
-        else if (property == "BackgroundColorHover")
+        else if (property == U"BackgroundColorHover")
         {
             m_backgroundColorHoverCached = getSharedRenderer()->getBackgroundColorHover();
         }
-        else if (property == "ArrowColor")
+        else if (property == U"ArrowColor")
         {
             m_arrowColorCached = getSharedRenderer()->getArrowColor();
         }
-        else if (property == "ArrowColorHover")
+        else if (property == U"ArrowColorHover")
         {
             m_arrowColorHoverCached = getSharedRenderer()->getArrowColorHover();
         }
-        else if ((property == "Opacity") || (property == "OpacityDisabled"))
+        else if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
             Widget::rendererChanged(property);
 
@@ -381,10 +383,10 @@ namespace tgui
     std::unique_ptr<DataIO::Node> SpinButton::save(SavingRenderersMap& renderers) const
     {
         auto node = Widget::save(renderers);
-        node->propertyValuePairs["Minimum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_minimum));
-        node->propertyValuePairs["Maximum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_maximum));
-        node->propertyValuePairs["Value"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_value));
-        node->propertyValuePairs["Step"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_step));
+        node->propertyValuePairs[U"Minimum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_minimum));
+        node->propertyValuePairs[U"Maximum"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_maximum));
+        node->propertyValuePairs[U"Value"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_value));
+        node->propertyValuePairs[U"Step"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_step));
         return node;
     }
 
@@ -394,14 +396,14 @@ namespace tgui
     {
         Widget::load(node, renderers);
 
-        if (node->propertyValuePairs["Minimum"])
-            setMinimum(node->propertyValuePairs["Minimum"]->value.toFloat());
-        if (node->propertyValuePairs["Maximum"])
-            setMaximum(node->propertyValuePairs["Maximum"]->value.toFloat());
-        if (node->propertyValuePairs["Value"])
-            setValue(node->propertyValuePairs["Value"]->value.toFloat());
-        if (node->propertyValuePairs["Step"])
-            setStep(node->propertyValuePairs["Step"]->value.toFloat());
+        if (node->propertyValuePairs[U"Minimum"])
+            setMinimum(node->propertyValuePairs[U"Minimum"]->value.toFloat());
+        if (node->propertyValuePairs[U"Maximum"])
+            setMaximum(node->propertyValuePairs[U"Maximum"]->value.toFloat());
+        if (node->propertyValuePairs[U"Value"])
+            setValue(node->propertyValuePairs[U"Value"]->value.toFloat());
+        if (node->propertyValuePairs[U"Step"])
+            setStep(node->propertyValuePairs[U"Step"]->value.toFloat());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -418,7 +420,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void SpinButton::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void SpinButton::draw(BackendRenderTarget& target, RenderStates states) const
     {
         // Draw the borders
         if (m_bordersCached != Borders{0})
@@ -455,21 +457,21 @@ namespace tgui
             {
                 target.drawFilledRect(states, arrowSize, arrowBackColor);
 
-                target.drawTriangles(states, {
+                target.drawTriangle(states,
                     {{arrowSize.x / 5, arrowSize.y * 4/5}, arrowVertexColor},
                     {{arrowSize.x / 2, arrowSize.y / 5}, arrowVertexColor},
                     {{arrowSize.x * 4/5, arrowSize.y * 4/5}, arrowVertexColor}
-                });
+                );
             }
             else // Spin button lies horizontal
             {
                 target.drawFilledRect(states, {arrowSize.y, arrowSize.x}, arrowBackColor);
 
-                target.drawTriangles(states, {
+                target.drawTriangle(states,
                     {{arrowSize.x * 4/5, arrowSize.y / 5}, arrowVertexColor},
                     {{arrowSize.x / 5, arrowSize.y / 2}, arrowVertexColor},
                     {{arrowSize.x * 4/5, arrowSize.y * 4/5}, arrowVertexColor}
-                });
+                );
             }
         }
 
@@ -521,21 +523,21 @@ namespace tgui
             {
                 target.drawFilledRect(states, arrowSize, arrowBackColor);
 
-                target.drawTriangles(states, {
+                target.drawTriangle(states,
                     {{arrowSize.x / 5, arrowSize.y / 5}, arrowVertexColor},
                     {{arrowSize.x / 2, arrowSize.y * 4/5}, arrowVertexColor},
                     {{arrowSize.x * 4/5, arrowSize.y / 5}, arrowVertexColor}
-                });
+                );
             }
             else // Spin button lies horizontal
             {
                 target.drawFilledRect(states, {arrowSize.y, arrowSize.x}, arrowBackColor);
 
-                target.drawTriangles(states, {
+                target.drawTriangle(states,
                     {{arrowSize.x / 5, arrowSize.y / 5}, arrowVertexColor},
                     {{arrowSize.x * 4/5, arrowSize.y / 2}, arrowVertexColor},
                     {{arrowSize.x / 5, arrowSize.y * 4/5}, arrowVertexColor}
-                });
+                );
             }
         }
     }
@@ -567,6 +569,13 @@ namespace tgui
                 }
             }
         }, std::chrono::milliseconds(300));
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr SpinButton::clone() const
+    {
+        return std::make_shared<SpinButton>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

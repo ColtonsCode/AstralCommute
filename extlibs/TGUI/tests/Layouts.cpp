@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -22,10 +22,9 @@
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "Tests.hpp"
-#include <TGUI/Widgets/Button.hpp>
-#include <TGUI/Widgets/Panel.hpp>
 #include <iostream>
+
+#include "Tests.hpp"
 
 using namespace tgui::bind_functions;
 using tgui::Layout;
@@ -67,7 +66,7 @@ TEST_CASE("[Layouts]")
     {
         Layout l1;
         Layout l2{2};
-        Layout l3 = l2;
+        Layout l3 = l2; // NOLINT(performance-unnecessary-copy-initialization)
         Layout l4;
         Layout l5{0};
         Layout l6{"max(2,3)+1"};
@@ -350,7 +349,7 @@ TEST_CASE("[Layouts]")
 
             REQUIRE(Layout("width").getValue() == 0);
 
-            std::streambuf *oldbuf = std::cerr.rdbuf(0);
+            std::streambuf *oldbuf = std::cerr.rdbuf(nullptr);
             REQUIRE(Layout("xyz").getValue() == 0);
             std::cerr.rdbuf(oldbuf);
         }
@@ -380,7 +379,7 @@ TEST_CASE("[Layouts]")
             REQUIRE(button2->getSizeLayout().toString() == "(b1.size, b1.size)");
             REQUIRE(button2->getPositionLayout().toString() == "(b1.position, b1.position)");
 
-            std::streambuf *oldbuf = std::cerr.rdbuf(0);
+            std::streambuf *oldbuf = std::cerr.rdbuf(nullptr);
             button2->setPosition({"b1.p"});
             REQUIRE(button2->getPosition() == tgui::Vector2f(0, 0));
             std::cerr.rdbuf(oldbuf);
@@ -401,7 +400,7 @@ TEST_CASE("[Layouts]")
             REQUIRE(button2->getSize() == tgui::Vector2f(340, 110));
             REQUIRE(button2->getSizeLayout().toString() == "(b1.left + b1.width, b1.top + b1.height)");
 
-            oldbuf = std::cerr.rdbuf(0);
+            oldbuf = std::cerr.rdbuf(nullptr);
             button2->setSize({"{@, #}"});
             REQUIRE(button2->getSize() == tgui::Vector2f(0, 0));
             std::cerr.rdbuf(oldbuf);
@@ -467,6 +466,31 @@ TEST_CASE("[Layouts]")
             // Button width will become positive again
             panel->setSize(200, 100);
             REQUIRE(button->getSize() == tgui::Vector2f(180, 100));
+        }
+
+        SECTION("Copying complex layout during layout update (https://forum.tgui.eu/index.php?topic=989)")
+        {
+            class CustomWidget : public tgui::ClickableWidget
+            {
+            public:
+                using Ptr = std::shared_ptr<CustomWidget>;
+
+                void setSize(const tgui::Layout2d& size) override
+                {
+                    tgui::Layout2d newSize = size; // NOLINT(performance-unnecessary-copy-initialization)
+                    ClickableWidget::setSize(newSize);
+                }
+            };
+
+            tgui::Panel::Ptr panel = std::make_shared<tgui::Panel>();
+            panel->setSize({400, 300});
+
+            CustomWidget::Ptr widget = std::make_shared<CustomWidget>();
+            widget->setSize({bindWidth(panel) + 50, bindHeight(panel) * 2});
+
+            // The line below causes CustomWidget::setSize to be executed while looping over the
+            // layouts that are connected to the panel.
+            panel->setSize({800, 600});
         }
     }
 }

@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -24,12 +24,23 @@
 
 
 #include <TGUI/Widgets/CheckBox.hpp>
-#include <cmath>
+
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cmath>
+
+    #if defined(__cpp_lib_math_constants) && (__cpp_lib_math_constants >= 201907L)
+        #include <numbers>
+    #endif
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char CheckBox::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     CheckBox::CheckBox(const char* typeName, bool initRenderer) :
@@ -48,7 +59,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    CheckBox::Ptr CheckBox::create(String text)
+    CheckBox::Ptr CheckBox::create(const String& text)
     {
         auto checkBox = std::make_shared<CheckBox>();
 
@@ -60,7 +71,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    CheckBox::Ptr CheckBox::copy(CheckBox::ConstPtr checkbox)
+    CheckBox::Ptr CheckBox::copy(const CheckBox::ConstPtr& checkbox)
     {
         if (checkbox)
             return std::static_pointer_cast<CheckBox>(checkbox->clone());
@@ -87,13 +98,6 @@ namespace tgui
     CheckBoxRenderer* CheckBox::getRenderer()
     {
         return aurora::downcast<CheckBoxRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    const CheckBoxRenderer* CheckBox::getRenderer() const
-    {
-        return aurora::downcast<const CheckBoxRenderer*>(Widget::getRenderer());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -164,7 +168,7 @@ namespace tgui
     {
         const bool mouseDown = m_mouseDown;
 
-        ClickableWidget::leftMouseReleased(pos);
+        ClickableWidget::leftMouseReleased(pos); // NOLINT(bugprone-parent-virtual-call)
 
         // Check or uncheck when we clicked on the checkbox (not just mouse release)
         if (mouseDown)
@@ -184,9 +188,9 @@ namespace tgui
 
     void CheckBox::rendererChanged(const String& property)
     {
-        if (property == "TextureUnchecked")
+        if (property == U"TextureUnchecked")
             m_textureUncheckedCached = getSharedRenderer()->getTextureUnchecked();
-        else if (property == "TextureChecked")
+        else if (property == U"TextureChecked")
             m_textureCheckedCached = getSharedRenderer()->getTextureChecked();
 
         RadioButton::rendererChanged(property);
@@ -224,7 +228,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void CheckBox::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void CheckBox::draw(BackendRenderTarget& target, RenderStates states) const
     {
         // Draw the borders
         if (m_bordersCached != Borders{0})
@@ -272,7 +276,11 @@ namespace tgui
 
             if (m_checked)
             {
-                const float pi = 3.14159265358979f;
+#if defined(__cpp_lib_math_constants) && (__cpp_lib_math_constants >= 201907L)
+                const float pi = std::numbers::pi_v<float>;
+#else
+                const float pi = 3.14159265359f;
+#endif
                 const Vertex::Color checkColor = Vertex::Color(getCurrentCheckColor());
                 const Vector2f size = getInnerSize();
                 const float lineThickness = std::min(size.x, size.y) / 5;
@@ -281,22 +289,21 @@ namespace tgui
                 const Vector2f rightPoint = {0.86f * size.x, 0.28f * size.y};
                 const float x = (lineThickness / 2.f) * std::cos(pi / 4.f);
                 const float y = (lineThickness / 2.f) * std::sin(pi / 4.f);
-                target.drawTriangles(states,
-                    {
-                        {{leftPoint.x - x, leftPoint.y + y}, checkColor},
-                        {{leftPoint.x + x, leftPoint.y - y}, checkColor},
-                        {{middlePoint.x, middlePoint.y + 2*y}, checkColor},
-                        {{middlePoint.x, middlePoint.y - 2*y}, checkColor},
-                        {{rightPoint.x + x, rightPoint.y + y}, checkColor},
-                        {{rightPoint.x - x, rightPoint.y - y}, checkColor}
-                    },
-                    {
-                        0, 1, 2,
-                        1, 2, 3,
-                        2, 3, 4,
-                        3, 4, 5
-                    }
-                );
+                const std::array<Vertex, 6> vertices = {{
+                    {{leftPoint.x - x, leftPoint.y + y}, checkColor},
+                    {{leftPoint.x + x, leftPoint.y - y}, checkColor},
+                    {{middlePoint.x, middlePoint.y + 2*y}, checkColor},
+                    {{middlePoint.x, middlePoint.y - 2*y}, checkColor},
+                    {{rightPoint.x + x, rightPoint.y + y}, checkColor},
+                    {{rightPoint.x - x, rightPoint.y - y}, checkColor}
+                }};
+                const std::array<unsigned int, 3u*4u> indices = {{
+                    0, 1, 2,
+                    1, 2, 3,
+                    2, 3, 4,
+                    3, 4, 5
+                }};
+                target.drawVertexArray(states, vertices.data(), vertices.size(), indices.data(), indices.size(), nullptr);
             }
         }
         states.transform.translate({-m_bordersCached.getLeft(), -m_bordersCached.getTop()});
@@ -306,6 +313,13 @@ namespace tgui
             states.transform.translate({(1 + m_textDistanceRatioCached) * getSize().x, (getSize().y - m_text.getSize().y) / 2.0f});
             target.drawText(states, m_text);
         }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr CheckBox::clone() const
+    {
+        return std::make_shared<CheckBox>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

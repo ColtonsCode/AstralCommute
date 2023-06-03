@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,11 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Font.hpp>
-
-#if TGUI_HAS_BACKEND_SFML
-    #include <SFML/System/Err.hpp>
-#endif
 
 TEST_CASE("[Font]")
 {
@@ -35,13 +30,5 @@ TEST_CASE("[Font]")
     REQUIRE(tgui::Font(nullptr) == nullptr);
     REQUIRE(tgui::Font("resources/DejaVuSans.ttf") != nullptr);
 
-#if TGUI_HAS_BACKEND_SFML
-    std::streambuf *oldbuf = sf::err().rdbuf(0); // Prevent SFML from printing a warning
-#endif
-
     REQUIRE_THROWS_AS(tgui::Font("NonExistentFile.ttf"), tgui::Exception);
-
-#if TGUI_HAS_BACKEND_SFML
-    sf::err().rdbuf(oldbuf);
-#endif
 }

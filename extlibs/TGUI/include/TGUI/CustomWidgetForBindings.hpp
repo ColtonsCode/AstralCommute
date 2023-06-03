@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -32,7 +32,7 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Class used by bindings to implement custom widgets withing these bindings (e.g. a custom  C# widget in TGUI.Net)
@@ -41,8 +41,10 @@ namespace tgui
     {
     public:
 
-        typedef std::shared_ptr<CustomWidgetForBindings> Ptr; //!< Shared widget pointer
-        typedef std::shared_ptr<const CustomWidgetForBindings> ConstPtr; //!< Shared constant widget pointer
+        using Ptr = std::shared_ptr<CustomWidgetForBindings>; //!< Shared widget pointer
+        using ConstPtr = std::shared_ptr<const CustomWidgetForBindings>; //!< Shared constant widget pointer
+
+        static constexpr const char StaticWidgetType[] = "CustomWidget"; //!< Type name of the widget
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -52,14 +54,14 @@ namespace tgui
         /// @param initRenderer Should the renderer be initialized? Should be true unless a derived class initializes it.
         /// @see create
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        CustomWidgetForBindings(const char* typeName = "CustomWidget", bool initRenderer = true);
+        CustomWidgetForBindings(const char* typeName = StaticWidgetType, bool initRenderer = true);
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @brief Creates a new widget
         /// @return The new widget
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        static CustomWidgetForBindings::Ptr create();
+        TGUI_NODISCARD static CustomWidgetForBindings::Ptr create();
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -116,7 +118,7 @@ namespace tgui
         ///
         /// @return Full size of the widget
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Vector2f getFullSize() const override;
+        TGUI_NODISCARD Vector2f getFullSize() const override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -124,7 +126,7 @@ namespace tgui
         ///
         /// @return Absolute position of the widget
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Vector2f getAbsolutePosition() const override;
+        TGUI_NODISCARD Vector2f getAbsolutePosition() const override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -134,7 +136,7 @@ namespace tgui
         ///
         /// @return Offset of the widget
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Vector2f getWidgetOffset() const override;
+        TGUI_NODISCARD Vector2f getWidgetOffset() const override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -172,7 +174,7 @@ namespace tgui
         /// @brief Returns whether the widget can gain focus
         /// @return Can the widget be focused?
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        bool canGainFocus() const override;
+        TGUI_NODISCARD bool canGainFocus() const override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -186,12 +188,12 @@ namespace tgui
         /// @brief Returns whether the mouse position (which is relative to the parent widget) lies on top of the widget
         /// @return Is the mouse on top of the widget?
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        bool isMouseOnWidget(Vector2f pos) const override;
+        TGUI_NODISCARD bool isMouseOnWidget(Vector2f pos) const override;
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @internal
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        void leftMousePressed(Vector2f pos) override;
+        bool leftMousePressed(Vector2f pos) override;
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @internal
@@ -227,7 +229,7 @@ namespace tgui
         /// @internal
         /// Returns whether the scrolling was handled by the widget or not.
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        bool mouseWheelScrolled(float delta, Vector2f pos) override;
+        bool scrolled(float delta, Vector2f pos, bool touch) override;
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @internal
@@ -245,7 +247,7 @@ namespace tgui
         /// @param target Render target to draw to
         /// @param states Current render states
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        void draw(BackendRenderTargetBase& target, RenderStates states) const override;
+        void draw(BackendRenderTarget& target, RenderStates states) const override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -258,10 +260,7 @@ namespace tgui
         ///
         /// @warning This function should not be used as it won't function correctly because the binding object isn't changed.
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Widget::Ptr clone() const override
-        {
-            return std::make_shared<CustomWidgetForBindings>(*this);
-        }
+        TGUI_NODISCARD Widget::Ptr clone() const override;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -300,20 +299,20 @@ namespace tgui
         std::function<Vector2f()>                       implGetWidgetOffset;
         std::function<bool(Duration)>                   implUpdateTimeFunction;
         std::function<bool(Vector2f)>                   implMouseOnWidget;
-        std::function<void(Vector2f)>                   implLeftMousePressed;
+        std::function<bool(Vector2f)>                   implLeftMousePressed;
         std::function<void(Vector2f)>                   implLeftMouseReleased;
         std::function<void(Vector2f)>                   implRightMousePressed;
         std::function<void(Vector2f)>                   implRightMouseReleased;
         std::function<void(Vector2f)>                   implMouseMoved;
         std::function<void(const Event::KeyEvent&)>     implKeyPressed;
         std::function<void(char32_t)>                   implTextEntered;
-        std::function<bool(float, Vector2f)>            implMouseWheelScrolled;
+        std::function<bool(float, Vector2f, bool)>      implScrolled;
         std::function<void()>                           implMouseNoLongerOnWidget;
         std::function<void()>                           implLeftMouseButtonNoLongerDown;
         std::function<void()>                           implMouseEnteredWidget;
         std::function<void()>                           implMouseLeftWidget;
         std::function<bool(const String&)>              implRendererChanged;
-        std::function<void(BackendRenderTargetBase&, RenderStates)> implDrawFunction;
+        std::function<void(BackendRenderTarget&, RenderStates)> implDrawFunction;
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     };

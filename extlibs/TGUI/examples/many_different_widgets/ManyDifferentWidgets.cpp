@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,17 +23,16 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-#include <TGUI/Core.hpp>
-#include <TGUI/AllWidgets.hpp>
+#include <TGUI/TGUI.hpp>
 #include <iostream>
 
-bool runExample(tgui::GuiBase& gui)
+bool runExample(tgui::BackendGui& gui)
 {
     try
     {
         tgui::Theme theme{"../../themes/Black.txt"};
 
-        gui.add(tgui::Picture::create("../RedBackground.jpg"));
+        gui.add(tgui::Picture::create("RedBackground.jpg"));
 
         auto tabs = tgui::Tabs::create();
         tabs->setRenderer(theme.getRenderer("Tabs"));
@@ -225,21 +224,6 @@ bool runExample(tgui::GuiBase& gui)
         chatbox->addLine("texus: Thanks! :)", tgui::Color::Green);
         chatbox->addLine("Me: The widgets rock ^^", tgui::Color::Yellow);
         gui.add(chatbox);
-
-#if TGUI_HAS_BACKEND_SFML
-        sf::Texture texture;
-        sf::Sprite  sprite;
-        texture.loadFromFile("../ThinkLinux.jpg");
-        sprite.setTexture(texture);
-        sprite.setScale(200.f / texture.getSize().x, 140.f / texture.getSize().y);
-
-        auto canvas = tgui::Canvas::create({200, 140});
-        canvas->setPosition(420, 430);
-        canvas->clear();
-        canvas->draw(sprite);
-        canvas->display();
-        gui.add(canvas);
-#endif
 
         button = tgui::Button::create();
         button->setRenderer(theme.getRenderer("Button"));

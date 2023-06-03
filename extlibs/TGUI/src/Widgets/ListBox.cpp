@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,17 +25,23 @@
 
 #include <TGUI/Widgets/ListBox.hpp>
 
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cmath>
+#endif
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char ListBox::StaticWidgetType[];
+#endif
+
    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     ListBox::ListBox(const char* typeName, bool initRenderer) :
         Widget{typeName, false}
     {
-        m_draggableWidget = true;
-
         if (initRenderer)
         {
             m_renderer = aurora::makeCopied<ListBoxRenderer>();
@@ -43,8 +49,8 @@ namespace tgui
         }
 
         setTextSize(getGlobalTextSize());
-        setItemHeight(static_cast<unsigned int>(Text::getLineHeight(m_fontCached, m_textSize, m_textStyleCached) * 1.25f));
-        setSize({Text::getLineHeight(m_fontCached, m_textSize, m_textStyleCached) * 10,
+        setItemHeight(static_cast<unsigned int>(std::round(Text::getLineHeight(m_fontCached, m_textSizeCached) * 1.25f)));
+        setSize({Text::getLineHeight(m_fontCached, m_textSizeCached) * 10,
                  (m_itemHeight * 7) + m_paddingCached.getTop() + m_paddingCached.getBottom() + m_bordersCached.getTop() + m_bordersCached.getBottom()});
     }
 
@@ -57,7 +63,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    ListBox::Ptr ListBox::copy(ListBox::ConstPtr listBox)
+    ListBox::Ptr ListBox::copy(const ListBox::ConstPtr& listBox)
     {
         if (listBox)
             return std::static_pointer_cast<ListBox>(listBox->clone());
@@ -88,25 +94,6 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    const ListBoxRenderer* ListBox::getRenderer() const
-    {
-        return aurora::downcast<const ListBoxRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    void ListBox::setPosition(const Layout2d& position)
-    {
-        Widget::setPosition(position);
-
-        for (std::size_t i = 0; i < m_items.size(); ++i)
-            m_items[i].text.setPosition({0, (i * m_itemHeight) + ((m_itemHeight - m_items[i].text.getSize().y) / 2.0f)});
-
-        m_scroll->setPosition(getSize().x - m_bordersCached.getRight() - m_scroll->getSize().x, m_bordersCached.getTop());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     void ListBox::setSize(const Layout2d& size)
     {
         Widget::setSize(size);
@@ -119,7 +106,7 @@ namespace tgui
         m_scroll->setSize({m_scroll->getSize().x, std::max(0.f, getInnerSize().y)});
         m_scroll->setViewportSize(static_cast<unsigned int>(getInnerSize().y - m_paddingCached.getTop() - m_paddingCached.getBottom()));
 
-        setPosition(m_position);
+        updateItemPositions();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -145,7 +132,7 @@ namespace tgui
         newItem.setColor(m_textColorCached);
         newItem.setOpacity(m_opacityCached);
         newItem.setStyle(m_textStyleCached);
-        newItem.setCharacterSize(m_textSize);
+        newItem.setCharacterSize(m_textSizeCached);
         newItem.setString(itemName);
         newItem.setPosition({0, (m_items.size() * m_itemHeight) + ((m_itemHeight - newItem.getSize().y) / 2.0f)});
 
@@ -199,14 +186,14 @@ namespace tgui
         updateSelectedItem(static_cast<int>(index));
 
         // Move the scrollbar
-        if (m_selectedItem * getItemHeight() < m_scroll->getValue())
+        if (index * getItemHeight() < m_scroll->getValue())
         {
-            m_scroll->setValue(m_selectedItem * getItemHeight());
+            m_scroll->setValue(static_cast<unsigned int>(index) * getItemHeight());
             triggerOnScroll();
         }
-        else if ((m_selectedItem + 1) * getItemHeight() > m_scroll->getValue() + m_scroll->getViewportSize())
+        else if ((index + 1) * getItemHeight() > m_scroll->getValue() + m_scroll->getViewportSize())
         {
-            m_scroll->setValue((m_selectedItem + 1) * getItemHeight() - m_scroll->getViewportSize());
+            m_scroll->setValue((static_cast<unsigned int>(index) + 1) * getItemHeight() - m_scroll->getViewportSize());
             triggerOnScroll();
         }
 
@@ -266,10 +253,10 @@ namespace tgui
         }
 
         // Remove the item
-        m_items.erase(m_items.begin() + index);
+        m_items.erase(m_items.begin() + static_cast<std::ptrdiff_t>(index));
 
         m_scroll->setMaximum(static_cast<unsigned int>(m_items.size() * m_itemHeight));
-        setPosition(m_position);
+        updateItemPositions();
         triggerOnScroll();
 
         return true;
@@ -294,10 +281,10 @@ namespace tgui
 
     String ListBox::getItemById(const String& id) const
     {
-        for (std::size_t i = 0; i < m_items.size(); ++i)
+        for (const auto& item : m_items)
         {
-            if (m_items[i].id == id)
-                return m_items[i].text.getString();
+            if (item.id == id)
+                return item.text.getString();
         }
 
         return "";
@@ -340,14 +327,14 @@ namespace tgui
 
     String ListBox::getSelectedItem() const
     {
-        return (m_selectedItem >= 0) ? m_items[m_selectedItem].text.getString() : "";
+        return (m_selectedItem >= 0) ? m_items[static_cast<std::size_t>(m_selectedItem)].text.getString() : "";
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     String ListBox::getSelectedItemId() const
     {
-        return (m_selectedItem >= 0) ? m_items[m_selectedItem].id : "";
+        return (m_selectedItem >= 0) ? m_items[static_cast<std::size_t>(m_selectedItem)].id : "";
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -442,16 +429,17 @@ namespace tgui
     {
         // Set the new heights
         m_itemHeight = itemHeight;
-        if (m_requestedTextSize == 0)
+
+        if ((m_textSize == 0) && !getSharedRenderer()->getTextSize())
         {
-            m_textSize = Text::findBestTextSize(m_fontCached, itemHeight * 0.8f);
+            m_textSizeCached = Text::findBestTextSize(m_fontCached, m_itemHeight * 0.8f);
             for (auto& item : m_items)
-                item.text.setCharacterSize(m_textSize);
+                item.text.setCharacterSize(m_textSizeCached);
         }
 
         m_scroll->setScrollAmount(m_itemHeight);
         m_scroll->setMaximum(static_cast<unsigned int>(m_items.size() * m_itemHeight));
-        setPosition(m_position);
+        updateItemPositions();
         triggerOnScroll();
     }
 
@@ -464,19 +452,15 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ListBox::setTextSize(unsigned int textSize)
+    void ListBox::updateTextSize()
     {
-        m_requestedTextSize = textSize;
-
-        if (textSize)
-            m_textSize = textSize;
-        else
-            m_textSize = Text::findBestTextSize(m_fontCached, m_itemHeight * 0.8f);
+        if ((m_textSize == 0) && !getSharedRenderer()->getTextSize())
+            m_textSizeCached = Text::findBestTextSize(m_fontCached, m_itemHeight * 0.8f);
 
         for (auto& item : m_items)
-            item.text.setCharacterSize(m_textSize);
+            item.text.setCharacterSize(m_textSizeCached);
 
-        setPosition(m_position);
+        updateItemPositions();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -495,10 +479,10 @@ namespace tgui
                 updateSelectedItem(-1);
 
             // Remove the items that passed the limitation
-            m_items.erase(m_items.begin() + m_maxItems, m_items.end());
+            m_items.erase(m_items.begin() + static_cast<std::ptrdiff_t>(m_maxItems), m_items.end());
 
             m_scroll->setMaximum(static_cast<unsigned int>(m_items.size() * m_itemHeight));
-            setPosition(m_position);
+            updateItemPositions();
             triggerOnScroll();
         }
     }
@@ -582,15 +566,16 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ListBox::leftMousePressed(Vector2f pos)
+    bool ListBox::leftMousePressed(Vector2f pos)
     {
         pos -= getPosition();
 
         Widget::leftMousePressed(pos);
 
+        bool isDragging = false;
         if (m_scroll->isMouseOnWidget(pos))
         {
-            m_scroll->leftMousePressed(pos);
+            isDragging = m_scroll->leftMousePressed(pos);
             triggerOnScroll();
         }
         else
@@ -600,7 +585,8 @@ namespace tgui
             {
                 pos.y -= m_bordersCached.getTop() + m_paddingCached.getTop();
 
-                int hoveringItem = static_cast<int>(((pos.y - (m_itemHeight - (m_scroll->getValue() % m_itemHeight))) / m_itemHeight) + (m_scroll->getValue() / m_itemHeight) + 1);
+                // NOLINTNEXTLINE(bugprone-integer-division)
+                const int hoveringItem = static_cast<int>(((pos.y - (m_itemHeight - (m_scroll->getValue() % m_itemHeight))) / m_itemHeight) + (m_scroll->getValue() / m_itemHeight) + 1);
                 if (hoveringItem < static_cast<int>(m_items.size()))
                     updateHoveringItem(hoveringItem);
                 else
@@ -615,9 +601,14 @@ namespace tgui
 
                 // Call the MousePress event after the item has already been changed, so that selected item represents the clicked item
                 if (m_selectedItem >= 0)
-                    onMousePress.emit(this, m_selectedItem, m_items[m_selectedItem].text.getString(), m_items[m_selectedItem].id);
+                {
+                    const Item& selectedItem = m_items[static_cast<std::size_t>(m_selectedItem)];
+                    onMousePress.emit(this, m_selectedItem, selectedItem.text.getString(), selectedItem.id);
+                }
             }
         }
+
+        return isDragging;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -627,7 +618,10 @@ namespace tgui
         if (m_mouseDown && !m_scroll->isMouseDown())
         {
             if (m_selectedItem >= 0)
-                onMouseRelease.emit(this, m_selectedItem, m_items[m_selectedItem].text.getString(), m_items[m_selectedItem].id);
+            {
+                const Item& selectedItem = m_items[static_cast<std::size_t>(m_selectedItem)];
+                onMouseRelease.emit(this, m_selectedItem, selectedItem.text.getString(), selectedItem.id);
+            }
 
             // Check if you double-clicked
             if (m_possibleDoubleClick)
@@ -635,7 +629,10 @@ namespace tgui
                 m_possibleDoubleClick = false;
 
                 if (m_selectedItem >= 0)
-                    onDoubleClick.emit(this, m_selectedItem, m_items[m_selectedItem].text.getString(), m_items[m_selectedItem].id);
+                {
+                    const Item& selectedItem = m_items[static_cast<std::size_t>(m_selectedItem)];
+                    onDoubleClick.emit(this, m_selectedItem, selectedItem.text.getString(), selectedItem.id);
+                }
             }
             else // This is the first click
             {
@@ -677,6 +674,7 @@ namespace tgui
             {
                 pos.y -= m_bordersCached.getTop() + m_paddingCached.getTop();
 
+                // NOLINTNEXTLINE(bugprone-integer-division)
                 int hoveringItem = static_cast<int>(((pos.y - (m_itemHeight - (m_scroll->getValue() % m_itemHeight))) / m_itemHeight) + (m_scroll->getValue() / m_itemHeight) + 1);
                 if (hoveringItem < static_cast<int>(m_items.size()))
                     updateHoveringItem(hoveringItem);
@@ -699,19 +697,19 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    bool ListBox::mouseWheelScrolled(float delta, Vector2f pos)
+    bool ListBox::scrolled(float delta, Vector2f pos, bool touch)
     {
-        if (m_scroll->isShown())
-        {
-            m_scroll->mouseWheelScrolled(delta, pos - getPosition());
-            triggerOnScroll();
+        if (!m_scroll->isShown())
+            return false;
 
-            // Update on which item the mouse is hovering
-            mouseMoved(pos);
-            return true;
-        }
+        if (!m_scroll->scrolled(delta, pos - getPosition(), touch))
+            return false;
 
-        return false;
+        triggerOnScroll();
+
+        // Update on which item the mouse is hovering
+        mouseMoved(pos);
+        return true;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -745,9 +743,9 @@ namespace tgui
             setSelectedItemByIndex(static_cast<std::size_t>(m_selectedItem - 1));
         }
         else if ((event.code == Event::KeyboardKey::Down)
-              && (m_selectedItem >= 0) && (static_cast<std::size_t>(m_selectedItem + 1) < m_items.size()))
+              && (m_selectedItem >= 0) && (static_cast<std::size_t>(m_selectedItem) + 1 < m_items.size()))
         {
-            setSelectedItemByIndex(static_cast<std::size_t>(m_selectedItem + 1));
+            setSelectedItemByIndex(static_cast<std::size_t>(m_selectedItem) + 1);
         }
     }
 
@@ -773,41 +771,41 @@ namespace tgui
 
     void ListBox::rendererChanged(const String& property)
     {
-        if (property == "Borders")
+        if (property == U"Borders")
         {
             m_bordersCached = getSharedRenderer()->getBorders();
             setSize(m_size);
         }
-        else if (property == "Padding")
+        else if (property == U"Padding")
         {
             m_paddingCached = getSharedRenderer()->getPadding();
             setSize(m_size);
         }
-        else if (property == "TextColor")
+        else if (property == U"TextColor")
         {
             m_textColorCached = getSharedRenderer()->getTextColor();
             updateItemColorsAndStyle();
         }
-        else if (property == "TextColorHover")
+        else if (property == U"TextColorHover")
         {
             m_textColorHoverCached = getSharedRenderer()->getTextColorHover();
             updateItemColorsAndStyle();
         }
-        else if (property == "SelectedTextColor")
+        else if (property == U"SelectedTextColor")
         {
             m_selectedTextColorCached = getSharedRenderer()->getSelectedTextColor();
             updateItemColorsAndStyle();
         }
-        else if (property == "SelectedTextColorHover")
+        else if (property == U"SelectedTextColorHover")
         {
             m_selectedTextColorHoverCached = getSharedRenderer()->getSelectedTextColorHover();
             updateItemColorsAndStyle();
         }
-        else if (property == "TextureBackground")
+        else if (property == U"TextureBackground")
         {
             m_spriteBackground.setTexture(getSharedRenderer()->getTextureBackground());
         }
-        else if (property == "TextStyle")
+        else if (property == U"TextStyle")
         {
             m_textStyleCached = getSharedRenderer()->getTextStyle();
 
@@ -815,58 +813,58 @@ namespace tgui
                 item.text.setStyle(m_textStyleCached);
 
             if ((m_selectedItem >= 0) && m_selectedTextStyleCached.isSet())
-                m_items[m_selectedItem].text.setStyle(m_selectedTextStyleCached);
+                m_items[static_cast<std::size_t>(m_selectedItem)].text.setStyle(m_selectedTextStyleCached);
         }
-        else if (property == "SelectedTextStyle")
+        else if (property == U"SelectedTextStyle")
         {
             m_selectedTextStyleCached = getSharedRenderer()->getSelectedTextStyle();
 
             if (m_selectedItem >= 0)
             {
                 if (m_selectedTextStyleCached.isSet())
-                    m_items[m_selectedItem].text.setStyle(m_selectedTextStyleCached);
+                    m_items[static_cast<std::size_t>(m_selectedItem)].text.setStyle(m_selectedTextStyleCached);
                 else
-                    m_items[m_selectedItem].text.setStyle(m_textStyleCached);
+                    m_items[static_cast<std::size_t>(m_selectedItem)].text.setStyle(m_textStyleCached);
             }
         }
-        else if (property == "Scrollbar")
+        else if (property == U"Scrollbar")
         {
             m_scroll->setRenderer(getSharedRenderer()->getScrollbar());
 
             // If no scrollbar width was set then we may need to use the one from the texture
-            if (!getSharedRenderer()->getScrollbarWidth())
+            if (getSharedRenderer()->getScrollbarWidth() == 0)
             {
                 m_scroll->setSize({m_scroll->getDefaultWidth(), m_scroll->getSize().y});
                 setSize(m_size);
             }
         }
-        else if (property == "ScrollbarWidth")
+        else if (property == U"ScrollbarWidth")
         {
-            const float width = getSharedRenderer()->getScrollbarWidth() ? getSharedRenderer()->getScrollbarWidth() : m_scroll->getDefaultWidth();
+            const float width = (getSharedRenderer()->getScrollbarWidth() != 0) ? getSharedRenderer()->getScrollbarWidth() : m_scroll->getDefaultWidth();
             m_scroll->setSize({width, m_scroll->getSize().y});
             setSize(m_size);
         }
-        else if (property == "BorderColor")
+        else if (property == U"BorderColor")
         {
             m_borderColorCached = getSharedRenderer()->getBorderColor();
         }
-        else if (property == "BackgroundColor")
+        else if (property == U"BackgroundColor")
         {
             m_backgroundColorCached = getSharedRenderer()->getBackgroundColor();
         }
-        else if (property == "BackgroundColorHover")
+        else if (property == U"BackgroundColorHover")
         {
             m_backgroundColorHoverCached = getSharedRenderer()->getBackgroundColorHover();
         }
-        else if (property == "SelectedBackgroundColor")
+        else if (property == U"SelectedBackgroundColor")
         {
             m_selectedBackgroundColorCached = getSharedRenderer()->getSelectedBackgroundColor();
         }
-        else if (property == "SelectedBackgroundColorHover")
+        else if (property == U"SelectedBackgroundColorHover")
         {
             m_selectedBackgroundColorHoverCached = getSharedRenderer()->getSelectedBackgroundColorHover();
         }
-        else if ((property == "Opacity") || (property == "OpacityDisabled"))
+        else if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
             Widget::rendererChanged(property);
 
@@ -875,7 +873,7 @@ namespace tgui
             for (auto& item : m_items)
                 item.text.setOpacity(m_opacityCached);
         }
-        else if (property == "Font")
+        else if (property == U"Font")
         {
             Widget::rendererChanged(property);
 
@@ -883,14 +881,14 @@ namespace tgui
                 item.text.setFont(m_fontCached);
 
             // Recalculate the text size with the new font
-            if (m_requestedTextSize == 0)
+            if ((m_textSize == 0) && !getSharedRenderer()->getTextSize())
             {
-                m_textSize = Text::findBestTextSize(m_fontCached, m_itemHeight * 0.8f);
+                m_textSizeCached = Text::findBestTextSize(m_fontCached, m_itemHeight * 0.8f);
                 for (auto& item : m_items)
-                    item.text.setCharacterSize(m_textSize);
+                    item.text.setCharacterSize(m_textSizeCached);
             }
 
-            setPosition(m_position);
+            updateItemPositions();
         }
         else
             Widget::rendererChanged(property);
@@ -921,25 +919,24 @@ namespace tgui
             itemList += "]";
             itemIdList += "]";
 
-            node->propertyValuePairs["Items"] = std::make_unique<DataIO::ValueNode>(itemList);
+            node->propertyValuePairs[U"Items"] = std::make_unique<DataIO::ValueNode>(itemList);
             if (itemIdsUsed)
-                node->propertyValuePairs["ItemIds"] = std::make_unique<DataIO::ValueNode>(itemIdList);
+                node->propertyValuePairs[U"ItemIds"] = std::make_unique<DataIO::ValueNode>(itemIdList);
         }
 
         if (!m_autoScroll)
-            node->propertyValuePairs["AutoScroll"] = std::make_unique<DataIO::ValueNode>("false");
+            node->propertyValuePairs[U"AutoScroll"] = std::make_unique<DataIO::ValueNode>("false");
 
         if (m_selectedItem >= 0)
-            node->propertyValuePairs["SelectedItemIndex"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_selectedItem));
+            node->propertyValuePairs[U"SelectedItemIndex"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_selectedItem));
 
         if (m_textAlignment == TextAlignment::Center)
-            node->propertyValuePairs["TextAlignment"] = std::make_unique<DataIO::ValueNode>("Center");
+            node->propertyValuePairs[U"TextAlignment"] = std::make_unique<DataIO::ValueNode>("Center");
         else if (m_textAlignment == TextAlignment::Right)
-            node->propertyValuePairs["TextAlignment"] = std::make_unique<DataIO::ValueNode>("Right");
+            node->propertyValuePairs[U"TextAlignment"] = std::make_unique<DataIO::ValueNode>("Right");
 
-        node->propertyValuePairs["TextSize"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_textSize));
-        node->propertyValuePairs["ItemHeight"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_itemHeight));
-        node->propertyValuePairs["MaximumItems"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_maxItems));
+        node->propertyValuePairs[U"ItemHeight"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_itemHeight));
+        node->propertyValuePairs[U"MaximumItems"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_maxItems));
 
         return node;
     }
@@ -950,58 +947,56 @@ namespace tgui
     {
         Widget::load(node, renderers);
 
-        if (node->propertyValuePairs["Items"])
+        if (node->propertyValuePairs[U"Items"])
         {
-            if (!node->propertyValuePairs["Items"]->listNode)
-                throw Exception{"Failed to parse 'Items' property, expected a list as value"};
+            if (!node->propertyValuePairs[U"Items"]->listNode)
+                throw Exception{U"Failed to parse 'Items' property, expected a list as value"};
 
-            if (node->propertyValuePairs["ItemIds"])
+            if (node->propertyValuePairs[U"ItemIds"])
             {
-                if (!node->propertyValuePairs["ItemIds"]->listNode)
-                    throw Exception{"Failed to parse 'ItemIds' property, expected a list as value"};
+                if (!node->propertyValuePairs[U"ItemIds"]->listNode)
+                    throw Exception{U"Failed to parse 'ItemIds' property, expected a list as value"};
 
-                if (node->propertyValuePairs["Items"]->valueList.size() != node->propertyValuePairs["ItemIds"]->valueList.size())
-                    throw Exception{"Amounts of values for 'Items' differs from the amount in 'ItemIds'"};
+                if (node->propertyValuePairs[U"Items"]->valueList.size() != node->propertyValuePairs[U"ItemIds"]->valueList.size())
+                    throw Exception{U"Amounts of values for 'Items' differs from the amount in 'ItemIds'"};
 
-                for (std::size_t i = 0; i < node->propertyValuePairs["Items"]->valueList.size(); ++i)
+                for (std::size_t i = 0; i < node->propertyValuePairs[U"Items"]->valueList.size(); ++i)
                 {
-                    addItem(Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs["Items"]->valueList[i]).getString(),
-                            Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs["ItemIds"]->valueList[i]).getString());
+                    addItem(Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs[U"Items"]->valueList[i]).getString(),
+                            Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs[U"ItemIds"]->valueList[i]).getString());
                 }
             }
             else // There are no item ids
             {
-                for (const auto& item : node->propertyValuePairs["Items"]->valueList)
+                for (const auto& item : node->propertyValuePairs[U"Items"]->valueList)
                     addItem(Deserializer::deserialize(ObjectConverter::Type::String, item).getString());
             }
         }
         else // If there are no items, there should be no item ids
         {
-            if (node->propertyValuePairs["ItemIds"])
-                throw Exception{"Found 'ItemIds' property while there is no 'Items' property"};
+            if (node->propertyValuePairs[U"ItemIds"])
+                throw Exception{U"Found 'ItemIds' property while there is no 'Items' property"};
         }
 
-        if (node->propertyValuePairs["TextAlignment"])
+        if (node->propertyValuePairs[U"TextAlignment"])
         {
-            String alignment = Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs["TextAlignment"]->value).getString();
-            if (alignment == "Right")
+            String alignment = Deserializer::deserialize(ObjectConverter::Type::String, node->propertyValuePairs[U"TextAlignment"]->value).getString();
+            if (alignment == U"Right")
                 setTextAlignment(TextAlignment::Right);
-            else if (alignment == "Center")
+            else if (alignment == U"Center")
                 setTextAlignment(TextAlignment::Center);
-            else if (alignment != "Left")
-                throw Exception{"Failed to parse TextAlignment property, found unknown value."};
+            else if (alignment != U"Left")
+                throw Exception{U"Failed to parse TextAlignment property, found unknown value."};
         }
 
-        if (node->propertyValuePairs["AutoScroll"])
-            setAutoScroll(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["AutoScroll"]->value).getBool());
-        if (node->propertyValuePairs["TextSize"])
-            setTextSize(node->propertyValuePairs["TextSize"]->value.toInt());
-        if (node->propertyValuePairs["ItemHeight"])
-            setItemHeight(node->propertyValuePairs["ItemHeight"]->value.toInt());
-        if (node->propertyValuePairs["MaximumItems"])
-            setMaximumItems(node->propertyValuePairs["MaximumItems"]->value.toInt());
-        if (node->propertyValuePairs["SelectedItemIndex"])
-            setSelectedItemByIndex(node->propertyValuePairs["SelectedItemIndex"]->value.toInt());
+        if (node->propertyValuePairs[U"AutoScroll"])
+            setAutoScroll(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"AutoScroll"]->value).getBool());
+        if (node->propertyValuePairs[U"ItemHeight"])
+            setItemHeight(node->propertyValuePairs[U"ItemHeight"]->value.toUInt());
+        if (node->propertyValuePairs[U"MaximumItems"])
+            setMaximumItems(node->propertyValuePairs[U"MaximumItems"]->value.toUInt());
+        if (node->propertyValuePairs[U"SelectedItemIndex"])
+            setSelectedItemByIndex(node->propertyValuePairs[U"SelectedItemIndex"]->value.toUInt());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1014,23 +1009,34 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    void ListBox::updateItemPositions()
+    {
+        for (std::size_t i = 0; i < m_items.size(); ++i)
+            m_items[i].text.setPosition({0, (i * m_itemHeight) + ((m_itemHeight - m_items[i].text.getSize().y) / 2.0f)});
+
+        m_scroll->setPosition(getSize().x - m_bordersCached.getRight() - m_scroll->getSize().x, m_bordersCached.getTop());
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     void ListBox::updateSelectedAndHoveringItemColorsAndStyle()
     {
         if (m_selectedItem >= 0)
         {
+            Item& selectedItem = m_items[static_cast<std::size_t>(m_selectedItem)];
             if ((m_selectedItem == m_hoveringItem) && m_selectedTextColorHoverCached.isSet())
-                m_items[m_selectedItem].text.setColor(m_selectedTextColorHoverCached);
+                selectedItem.text.setColor(m_selectedTextColorHoverCached);
             else if (m_selectedTextColorCached.isSet())
-                m_items[m_selectedItem].text.setColor(m_selectedTextColorCached);
+                selectedItem.text.setColor(m_selectedTextColorCached);
 
             if (m_selectedTextStyleCached.isSet())
-                m_items[m_selectedItem].text.setStyle(m_selectedTextStyleCached);
+                selectedItem.text.setStyle(m_selectedTextStyleCached);
         }
 
         if ((m_hoveringItem >= 0) && (m_selectedItem != m_hoveringItem))
         {
             if (m_textColorHoverCached.isSet())
-                m_items[m_hoveringItem].text.setColor(m_textColorHoverCached);
+                m_items[static_cast<std::size_t>(m_hoveringItem)].text.setColor(m_textColorHoverCached);
         }
     }
 
@@ -1056,9 +1062,9 @@ namespace tgui
             if (m_hoveringItem >= 0)
             {
                 if ((m_selectedItem == m_hoveringItem) && m_selectedTextColorCached.isSet())
-                    m_items[m_hoveringItem].text.setColor(m_selectedTextColorCached);
+                    m_items[static_cast<std::size_t>(m_hoveringItem)].text.setColor(m_selectedTextColorCached);
                 else
-                    m_items[m_hoveringItem].text.setColor(m_textColorCached);
+                    m_items[static_cast<std::size_t>(m_hoveringItem)].text.setColor(m_textColorCached);
             }
 
             m_hoveringItem = item;
@@ -1071,26 +1077,30 @@ namespace tgui
 
     void ListBox::updateSelectedItem(int item)
     {
-        if (m_selectedItem != item)
+        if (m_selectedItem == item)
+            return;
+
+        if (m_selectedItem >= 0)
         {
-            if (m_selectedItem >= 0)
-            {
-                if ((m_selectedItem == m_hoveringItem) && m_textColorHoverCached.isSet())
-                    m_items[m_selectedItem].text.setColor(m_textColorHoverCached);
-                else
-                    m_items[m_selectedItem].text.setColor(m_textColorCached);
-
-                m_items[m_selectedItem].text.setStyle(m_textStyleCached);
-            }
-
-            m_selectedItem = item;
-            if (m_selectedItem >= 0)
-                onItemSelect.emit(this, m_selectedItem, m_items[m_selectedItem].text.getString(), m_items[m_selectedItem].id);
+            Item& selectedItem = m_items[static_cast<std::size_t>(m_selectedItem)];
+            if ((m_selectedItem == m_hoveringItem) && m_textColorHoverCached.isSet())
+                selectedItem.text.setColor(m_textColorHoverCached);
             else
-                onItemSelect.emit(this, m_selectedItem, "", "");
+                selectedItem.text.setColor(m_textColorCached);
 
-            updateSelectedAndHoveringItemColorsAndStyle();
+            selectedItem.text.setStyle(m_textStyleCached);
         }
+
+        m_selectedItem = item;
+        if (m_selectedItem >= 0)
+        {
+            const Item& selectedItem = m_items[static_cast<std::size_t>(m_selectedItem)];
+            onItemSelect.emit(this, m_selectedItem, selectedItem.text.getString(), selectedItem.id);
+        }
+        else
+            onItemSelect.emit(this, m_selectedItem, "", "");
+
+        updateSelectedAndHoveringItemColorsAndStyle();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1122,7 +1132,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ListBox::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void ListBox::draw(BackendRenderTarget& target, RenderStates states) const
     {
         const RenderStates statesForScrollbar = states;
 
@@ -1187,7 +1197,7 @@ namespace tgui
             // Draw the items
             if (m_textAlignment == ListBox::TextAlignment::Right)
             {
-                const float textPadding = Text::getExtraHorizontalPadding(m_fontCached, m_textSize, m_textStyleCached);
+                const float textPadding = Text::getExtraHorizontalPadding(m_fontCached, m_textSizeCached);
                 for (std::size_t i = firstItem; i < lastItem; ++i)
                 {
                     const float textWidth = m_items[i].text.getSize().x;
@@ -1208,7 +1218,7 @@ namespace tgui
             }
             else // m_textAlignment == ListBox::TextAlignment::Left
             {
-                states.transform.translate({Text::getExtraHorizontalPadding(m_fontCached, m_textSize, m_textStyleCached), 0});
+                states.transform.translate({Text::getExtraHorizontalPadding(m_fontCached, m_textSizeCached), 0});
                 for (std::size_t i = firstItem; i < lastItem; ++i)
                     target.drawText(states, m_items[i].text);
             }
@@ -1218,6 +1228,13 @@ namespace tgui
 
         // Draw the scrollbar
         m_scroll->draw(target, statesForScrollbar);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr ListBox::clone() const
+    {
+        return std::make_shared<ListBox>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

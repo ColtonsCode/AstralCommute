@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,7 +23,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Loading/ThemeLoader.hpp>
 
 // Ignore warning "C4503: decorated name length exceeded, name was truncated" in Visual Studio
 #if defined _MSC_VER
@@ -125,7 +124,6 @@ TEST_CASE("[ThemeLoader]")
 
             auto& cache1 = propertyCache["resources/ThemeSpecialCases.txt"];
             auto& cache2 = propertyCache["resources/ThemeButton1.txt"];
-            REQUIRE(cache1.size() == 4);
             REQUIRE(cache1["Button1"].size() == 1);
             REQUIRE(cache1["Button1"]["TextColor"] == "rgb(255, 0, 0)");
             REQUIRE(cache1["Name.With.Dots"].size() == 2);
@@ -135,7 +133,6 @@ TEST_CASE("[ThemeLoader]")
             REQUIRE(cache1["SpecialChars.{}=:;/*#//\t\\\""]["TextColor"] == "rgba(,,,)");
             REQUIRE(cache1["label"].size() == 1);
             REQUIRE(cache1["label"]["TextColor"] == "rgb(0, 0, 255)");
-            REQUIRE(cache2.size() == 1);
             REQUIRE(cache2["Button1"].size() == 1);
             REQUIRE(cache2["Button1"]["TextColor"] == "rgb(255, 255, 0)");
 
@@ -167,7 +164,6 @@ TEST_CASE("[ThemeLoader]")
             REQUIRE(loader->getPropertiesCache().size() == 1);
 
             auto& cache = loader->getPropertiesCache()["resources/ThemeSpecialCases.txt"];
-            REQUIRE(cache.size() == 4);
             REQUIRE(cache["Button1"].size() == 1);
             REQUIRE(cache["Button1"]["TextColor"] == "rgb(255, 0, 0)");
             REQUIRE(cache["Name.With.Dots"].size() == 2);

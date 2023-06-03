@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,8 +23,10 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/Widgets/FileDialog.hpp>
-#include <TGUI/FileDialogIconLoader.hpp>
+
+#if !TGUI_BUILD_AS_CXX_MODULE
+    #include <TGUI/FileDialogIconLoader.hpp>
+#endif
 
 TEST_CASE("[FileDialog]")
 {
@@ -34,13 +36,9 @@ TEST_CASE("[FileDialog]")
     SECTION("Signals")
     {
         dialog->onFileSelect([](){});
-        dialog->onFileSelect([](std::vector<tgui::Filesystem::Path>){});
+        dialog->onFileSelect([](const tgui::String&){});
+        dialog->onFileSelect([](const tgui::Filesystem::Path&){});
         dialog->onFileSelect([](const std::vector<tgui::Filesystem::Path>&){});
-    }
-
-    SECTION("WidgetType")
-    {
-        REQUIRE(dialog->getWidgetType() == "FileDialog");
     }
 
     SECTION("WidgetType")
@@ -70,7 +68,7 @@ TEST_CASE("[FileDialog]")
         REQUIRE(dialog->getFilename() == "Config.txt");
     }
 
-    SECTION("Filename")
+    SECTION("FileTypeFilters")
     {
         REQUIRE(dialog->getFileTypeFiltersIndex() == 0);
         REQUIRE(dialog->getFileTypeFilters().size() == 1);
@@ -246,13 +244,6 @@ TEST_CASE("[FileDialog]")
         auto renderer = dialog->getRenderer();
         renderer->setBackgroundColor({255, 99, 71});
         renderer->setArrowsOnNavigationButtonsVisible(false);
-
-        // The file dialog contains multiple buttons and 2 edit boxes which share renderers with each other.
-        // This causes the renderers to be saved outside of the FileDialog section so that the widgets can refer to it.
-        // Unfortunately, the order in which the global renderers are saved is undefined and we compare the files
-        // literally to check if the output is the same. This is why we make a small change to the internal renderer
-        // of a single edit box here, this makes sure only the button renderer is stored outside the FileDialog.
-        dialog->get("#TGUI_INTERNAL$EditBoxFilename#")->getRenderer()->setOpacity(0.9f);
 
         testSavingWidget("FileDialog", dialog, false);
     }

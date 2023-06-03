@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -22,13 +22,12 @@
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "Tests.hpp"
-#include <TGUI/Widgets/Panel.hpp>
-#include <TGUI/Backend.hpp>
-
+#include <TGUI/Config.hpp>
 #ifdef TGUI_SYSTEM_WINDOWS
-    #include <TGUI/WindowsInclude.hpp>
+    #include <TGUI/extlibs/IncludeWindows.hpp>
 #endif
+
+#include "Tests.hpp"
 
 tgui::String getClipboardContents()
 {
@@ -53,7 +52,7 @@ void genericCallback(unsigned int& count)
     count++;
 }
 
-void testWidgetSignals(tgui::Widget::Ptr widget)
+void testWidgetSignals(const tgui::Widget::Ptr& widget)
 {
     // TODO: Test other signals than MouseEntered and MouseLeft
 
@@ -189,12 +188,12 @@ void testClickableWidgetSignalsImpl(T widget)
     }
 }
 
-void testClickableWidgetSignals(tgui::ClickableWidget::Ptr widget)
+void testClickableWidgetSignals(const tgui::ClickableWidget::Ptr& widget)
 {
     testClickableWidgetSignalsImpl(widget);
 }
 
-void testClickableWidgetSignals(tgui::Panel::Ptr widget)
+void testClickableWidgetSignals(const tgui::Panel::Ptr& widget)
 {
     testClickableWidgetSignalsImpl(widget);
 }

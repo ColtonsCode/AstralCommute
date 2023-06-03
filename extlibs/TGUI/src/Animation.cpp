@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -34,7 +34,7 @@ namespace tgui
     {
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Animation::Type Animation::getType() const
+        AnimationType Animation::getType() const
         {
             return m_type;
         }
@@ -49,20 +49,20 @@ namespace tgui
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        Animation::Animation(Type type, Widget::Ptr widget, Duration duration, std::function<void()> finishedCallback) :
+        Animation::Animation(AnimationType type, Widget::Ptr widget, Duration duration, std::function<void()> finishedCallback) :
             m_type            {type},
-            m_widget          {widget},
+            m_widget          {std::move(widget)},
             m_totalDuration   {duration},
-            m_finishedCallback{finishedCallback}
+            m_finishedCallback{std::move(finishedCallback)}
         {
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         MoveAnimation::MoveAnimation(Widget::Ptr widget, Vector2f start, Layout2d end, Duration duration, std::function<void()> finishedCallback) :
-            Animation {Type::Move, widget, duration, finishedCallback},
+            Animation {AnimationType::Move, std::move(widget), duration, std::move(finishedCallback)},
             m_startPos{start},
-            m_endPos  {end}
+            m_endPos  {std::move(end)}
         {
         }
 
@@ -92,9 +92,9 @@ namespace tgui
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         ResizeAnimation::ResizeAnimation(Widget::Ptr widget, Vector2f start, Layout2d end, Duration duration, std::function<void()> finishedCallback) :
-            Animation  {Type::Resize, widget, duration, finishedCallback},
+            Animation  {AnimationType::Resize, std::move(widget), duration, std::move(finishedCallback)},
             m_startSize{start},
-            m_endSize  {end}
+            m_endSize  {std::move(end)}
         {
         }
 
@@ -124,7 +124,7 @@ namespace tgui
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         FadeAnimation::FadeAnimation(Widget::Ptr widget, float start, float end, Duration duration, std::function<void()> finishedCallback) :
-            Animation     {Type::Fade, widget, duration, finishedCallback},
+            Animation     {AnimationType::Opacity, std::move(widget), duration, std::move(finishedCallback)},
             m_startOpacity{std::max(0.f, std::min(1.f, start))},
             m_endOpacity  {std::max(0.f, std::min(1.f, end))}
         {

@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -31,45 +31,36 @@
 #include <TGUI/ObjectConverter.hpp>
 #include <TGUI/Loading/DataIO.hpp>
 
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <unordered_set>
+    #include <map>
+#endif
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
+    class Theme;
+    class Widget;
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Shared data used in renderer classes
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    struct RendererData
+    struct TGUI_API RendererData
     {
         RendererData() = default;
+        RendererData(const RendererData& other);
+        RendererData& operator=(const RendererData& other);
 
-        static std::shared_ptr<RendererData> create(const std::map<String, ObjectConverter>& init = {})
-        {
-            auto data = std::make_shared<RendererData>();
-            data->propertyValuePairs = init;
-            return data;
-        }
+        TGUI_NODISCARD static std::shared_ptr<RendererData> create(const std::map<String, ObjectConverter>& init = {});
 
         /// @internal
-        static std::shared_ptr<RendererData> createFromDataIONode(const DataIO::Node* rendererNode)
-        {
-            auto rendererData = std::make_shared<RendererData>();
-            rendererData->shared = false;
-
-            for (const auto& pair : rendererNode->propertyValuePairs)
-                rendererData->propertyValuePairs[pair.first] = ObjectConverter(pair.second->value); // Did not compile with VS2015 Update 2 when using braces
-
-            for (const auto& nestedProperty : rendererNode->children)
-            {
-                std::stringstream ss;
-                DataIO::emit(nestedProperty, ss);
-                rendererData->propertyValuePairs[nestedProperty->name] = {String("{\n" + ss.str() + "}")};
-            }
-
-            return rendererData;
-        };
+        TGUI_NODISCARD static std::shared_ptr<RendererData> createFromDataIONode(const DataIO::Node* rendererNode);
 
         std::map<String, ObjectConverter> propertyValuePairs;
-        std::map<const void*, std::function<void(const String& property)>> observers;
+        std::unordered_set<Widget*> observers;
+        Theme* connectedTheme = nullptr;
+        bool themePropertiesInherited = false;
         bool shared = true;
     };
 
@@ -81,10 +72,11 @@ namespace tgui
     {
     public:
 
-        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        /// @brief Default constructor
-        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        WidgetRenderer() = default;
+        WidgetRenderer() = default; //!< Default constructor
+        WidgetRenderer(const WidgetRenderer&); //!< Copy constructor
+        WidgetRenderer(WidgetRenderer&&) = default; //!< Default move constructor
+        WidgetRenderer& operator=(const WidgetRenderer&); //!< Copy assignment operator
+        WidgetRenderer& operator=(WidgetRenderer&&) = default; //!< Default move assignment operator
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -121,7 +113,7 @@ namespace tgui
         /// @return The opacity of the widget. 0 means completely transparent, while 1 (default) means fully opaque
         ///
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        float getOpacity() const;
+        TGUI_NODISCARD float getOpacity() const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -140,7 +132,7 @@ namespace tgui
         /// @return The opacity of the widget in disabled state, or -1 when using the not using a different opacity when
         ///         the widget is enabled or disabled.
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        float getOpacityDisabled() const;
+        TGUI_NODISCARD float getOpacityDisabled() const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -151,7 +143,7 @@ namespace tgui
         /// When you don't call this function then the font from the parent widget will be used.
         ///
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        void setFont(Font font);
+        void setFont(const Font& font);
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -160,7 +152,28 @@ namespace tgui
         /// @return Font used by widget
         ///
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Font getFont() const;
+        TGUI_NODISCARD Font getFont() const;
+
+
+        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        /// @brief Changes the text size of the widget that is specified by the renderer
+        ///
+        /// @param size  The new text size to use
+        ///
+        /// If the text size is 0 (default) then the renderer won't overwrite the text size of the widget.
+        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        void setTextSize(unsigned int size);
+
+
+        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        /// @brief Returns text size of the widget that is specified by the renderer
+        ///
+        /// By default, this function will return 0 which means the renderer isn't overwriting the text size of the widget.
+        /// Use the getTextSize() function of the widget itself (instead of the one from the renderer) to get the actual size.
+        ///
+        /// @return Text size of the widget or 0 if the renderer doesn't specify a text size
+        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        TGUI_NODISCARD unsigned int getTextSize() const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -181,7 +194,7 @@ namespace tgui
         /// @return Whether mouse events on transparent texture parts are ignored
         /// @see setTransparentTexture
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        bool getTransparentTexture() const;
+        TGUI_NODISCARD bool getTransparentTexture() const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -206,7 +219,7 @@ namespace tgui
         ///         an ObjectConverter object with type ObjectConverter::Type::None when the property did not exist.
         ///
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        ObjectConverter getProperty(const String& property) const;
+        TGUI_NODISCARD ObjectConverter getProperty(const String& property) const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -215,26 +228,23 @@ namespace tgui
         /// @return Property-value pairs of the renderer
         ///
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        const std::map<String, ObjectConverter>& getPropertyValuePairs() const;
+        TGUI_NODISCARD const std::map<String, ObjectConverter>& getPropertyValuePairs() const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @brief Subscribes a callback function to changes in the renderer
         ///
-        /// @param id       Unique identifier for this callback function so that you can unsubscribe it later
-        /// @param function Callback function to call when the renderer changes
-        ///
+        /// @param widget  The widget that should to be alerted when the renderer changes
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        void subscribe(const void* id, const std::function<void(const String& property)>& function);
+        void subscribe(Widget* widget);
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @brief Subscribes a callback function to changes in the renderer
         ///
-        /// @param id  Unique identifier used when subscribing the callback function
-        ///
+        /// @param widget  The widget that used to be alerted when the renderer changed
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        void unsubscribe(const void* id);
+        void unsubscribe(Widget* widget);
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -255,7 +265,7 @@ namespace tgui
         /// @warning You should not make changed to this data directly. Instead, use the function from the renderer classes
         ///
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        std::shared_ptr<RendererData> getData() const;
+        TGUI_NODISCARD std::shared_ptr<RendererData> getData() const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -264,7 +274,7 @@ namespace tgui
         /// You can pass this to a widget with the setRenderer function to have a separate non-shared copy of this renderer.
         ///
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        std::shared_ptr<RendererData> clone() const;
+        TGUI_NODISCARD std::shared_ptr<RendererData> clone() const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

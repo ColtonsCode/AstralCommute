@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -29,6 +29,10 @@
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char ClickableWidget::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     ClickableWidget::ClickableWidget(const char* typeName, bool initRenderer) :
@@ -38,7 +42,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    ClickableWidget::Ptr ClickableWidget::create(Layout2d size)
+    ClickableWidget::Ptr ClickableWidget::create(const Layout2d& size)
     {
         auto widget = std::make_shared<ClickableWidget>();
         widget->setSize(size);
@@ -47,7 +51,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    ClickableWidget::Ptr ClickableWidget::copy(ClickableWidget::ConstPtr widget)
+    ClickableWidget::Ptr ClickableWidget::copy(const ClickableWidget::ConstPtr& widget)
     {
         if (widget)
             return std::static_pointer_cast<ClickableWidget>(widget->clone());
@@ -64,10 +68,11 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ClickableWidget::leftMousePressed(Vector2f pos)
+    bool ClickableWidget::leftMousePressed(Vector2f pos)
     {
         Widget::leftMousePressed(pos);
         onMousePress.emit(this, pos - getPosition());
+        return false;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -111,7 +116,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void ClickableWidget::draw(BackendRenderTargetBase&, RenderStates) const
+    void ClickableWidget::draw(BackendRenderTarget&, RenderStates) const
     {
     }
 
@@ -133,6 +138,13 @@ namespace tgui
             return onRightClick;
         else
             return Widget::getSignal(std::move(signalName));
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr ClickableWidget::clone() const
+    {
+        return std::make_shared<ClickableWidget>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -29,6 +29,10 @@
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char Picture::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     Picture::Picture(const char* typeName, bool initRenderer) :
@@ -60,7 +64,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Picture::Ptr Picture::copy(Picture::ConstPtr picture)
+    Picture::Ptr Picture::copy(const Picture::ConstPtr& picture)
     {
         if (picture)
             return std::static_pointer_cast<Picture>(picture->clone());
@@ -87,13 +91,6 @@ namespace tgui
     PictureRenderer* Picture::getRenderer()
     {
         return aurora::downcast<PictureRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    const PictureRenderer* Picture::getRenderer() const
-    {
-        return aurora::downcast<const PictureRenderer*>(Widget::getRenderer());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -180,7 +177,7 @@ namespace tgui
 
     void Picture::rendererChanged(const String& property)
     {
-        if (property == "Texture")
+        if (property == U"Texture")
         {
             const auto& texture = getSharedRenderer()->getTexture();
 
@@ -189,7 +186,7 @@ namespace tgui
 
             m_sprite.setTexture(texture);
         }
-        else if ((property == "Opacity") || (property == "OpacityDisabled"))
+        else if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
             Widget::rendererChanged(property);
             m_sprite.setOpacity(m_opacityCached);
@@ -205,7 +202,7 @@ namespace tgui
         auto node = Widget::save(renderers);
 
         if (m_ignoringMouseEvents)
-            node->propertyValuePairs["IgnoreMouseEvents"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_ignoringMouseEvents));
+            node->propertyValuePairs[U"IgnoreMouseEvents"] = std::make_unique<DataIO::ValueNode>(Serializer::serialize(m_ignoringMouseEvents));
 
         return node;
     }
@@ -216,8 +213,8 @@ namespace tgui
     {
         Widget::load(node, renderers);
 
-        if (node->propertyValuePairs["IgnoreMouseEvents"])
-            ignoreMouseEvents(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs["IgnoreMouseEvents"]->value).getBool());
+        if (node->propertyValuePairs[U"IgnoreMouseEvents"])
+            ignoreMouseEvents(Deserializer::deserialize(ObjectConverter::Type::Bool, node->propertyValuePairs[U"IgnoreMouseEvents"]->value).getBool());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -237,9 +234,16 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Picture::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void Picture::draw(BackendRenderTarget& target, RenderStates states) const
     {
         target.drawSprite(states, m_sprite);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr Picture::clone() const
+    {
+        return std::make_shared<Picture>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

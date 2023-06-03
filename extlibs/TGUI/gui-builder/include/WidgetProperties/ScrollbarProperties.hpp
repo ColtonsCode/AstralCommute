@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,11 +27,10 @@
 #define TGUI_GUI_BUILDER_SCROLLBAR_PROPERTIES_HPP
 
 #include "WidgetProperties.hpp"
-#include <TGUI/Widgets/Scrollbar.hpp>
 
 struct ScrollbarProperties : WidgetProperties
 {
-    void updateProperty(tgui::Widget::Ptr widget, const tgui::String& property, const tgui::String& value) const override
+    void updateProperty(const tgui::Widget::Ptr& widget, const tgui::String& property, const tgui::String& value) const override
     {
         auto scrollbar = widget->cast<tgui::Scrollbar>();
         if (property == "Maximum")
@@ -50,7 +49,7 @@ struct ScrollbarProperties : WidgetProperties
             WidgetProperties::updateProperty(widget, property, value);
     }
 
-    PropertyValueMapPair initProperties(tgui::Widget::Ptr widget) const override
+    TGUI_NODISCARD PropertyValueMapPair initProperties(const tgui::Widget::Ptr& widget) const override
     {
         auto pair = WidgetProperties::initProperties(widget);
         auto scrollbar = widget->cast<tgui::Scrollbar>();
@@ -59,7 +58,7 @@ struct ScrollbarProperties : WidgetProperties
         pair.first["ViewportSize"] = {"UInt", tgui::String::fromNumber(scrollbar->getViewportSize())};
         pair.first["ScrollAmount"] = {"UInt", tgui::String::fromNumber(scrollbar->getScrollAmount())};
         pair.first["AutoHide"] = {"Bool", tgui::Serializer::serialize(scrollbar->getAutoHide())};
-        pair.first["VerticalScroll"] = {"Bool", tgui::String::fromNumber(scrollbar->getVerticalScroll())};
+        pair.first["VerticalScroll"] = {"Bool", tgui::Serializer::serialize(scrollbar->getVerticalScroll())};
 
         const auto renderer = scrollbar->getSharedRenderer();
         pair.second["TrackColor"] = {"Color", tgui::Serializer::serialize(renderer->getTrackColor())};

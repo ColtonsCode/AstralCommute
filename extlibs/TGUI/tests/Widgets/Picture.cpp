@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -22,10 +22,24 @@
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#include <TGUI/Config.hpp>
+#if TGUI_HAS_BACKEND_SFML_GRAPHICS
+    #include <SFML/Graphics/Texture.hpp>
+#endif
+
 #include "Tests.hpp"
-#include <TGUI/Widgets/Picture.hpp>
-#include <TGUI/Widgets/Panel.hpp>
-#include <TGUI/Loading/ImageLoader.hpp>
+
+#if !TGUI_BUILD_AS_CXX_MODULE
+    #include <TGUI/Loading/ImageLoader.hpp>
+#endif
+
+#if TGUI_HAS_BACKEND_SFML_GRAPHICS
+    #if TGUI_BUILD_AS_CXX_MODULE
+        import tgui.backend.renderer.sfml_graphics;
+    #else
+        #include <TGUI/Backend/Renderer/SFML-Graphics/BackendRendererSFML.hpp>
+    #endif
+#endif
 
 TEST_CASE("[Picture]")
 {
@@ -45,7 +59,7 @@ TEST_CASE("[Picture]")
     SECTION("Create")
     {
         tgui::Vector2u imageSize;
-        tgui::ImageLoader::loadFromFile("resources/image.png", imageSize);
+        (void)tgui::ImageLoader::loadFromFile("resources/image.png", imageSize);
 
         SECTION("from tgui::Texture")
         {
@@ -53,14 +67,17 @@ TEST_CASE("[Picture]")
             REQUIRE(picture->getRenderer()->getTexture().getId() == "resources/image.png");
         }
 
-#if TGUI_HAS_BACKEND_SFML
-        SECTION("from sf::Texture")
+#if TGUI_HAS_BACKEND_SFML_GRAPHICS
+        if (std::dynamic_pointer_cast<tgui::BackendRendererSFML>(tgui::getBackend()->getRenderer()))
         {
-            sf::Texture texture;
-            texture.loadFromFile("resources/image.png");
+            SECTION("from sf::Texture")
+            {
+                sf::Texture texture;
+                REQUIRE(texture.loadFromFile("resources/image.png"));
 
-            REQUIRE_NOTHROW(picture = tgui::Picture::create(texture));
-            REQUIRE(picture->getRenderer()->getTexture().getId() == "");
+                REQUIRE_NOTHROW(picture = tgui::Picture::create(texture));
+                REQUIRE(picture->getRenderer()->getTexture().getId() == "");
+            }
         }
 #endif
 

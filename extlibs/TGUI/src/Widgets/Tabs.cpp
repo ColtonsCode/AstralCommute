@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,19 +25,25 @@
 
 #include <TGUI/Widgets/Tabs.hpp>
 #include <TGUI/Optional.hpp>
-#include <cmath>
+
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <cmath>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace tgui
 {
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char Tabs::StaticWidgetType[];
+#endif
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     Tabs::Tabs(const char* typeName, bool initRenderer) :
-        Widget{typeName, false}
+        Widget{typeName, false},
+        m_distanceToSideCached(std::round(Text::getLineHeight(m_fontCached, getGlobalTextSize()) * 0.4f))
     {
-        m_distanceToSideCached = std::round(Text::getLineHeight(m_fontCached, getGlobalTextSize()) * 0.4f);
-
         if (initRenderer)
         {
             m_renderer = aurora::makeCopied<TabsRenderer>();
@@ -45,7 +51,7 @@ namespace tgui
         }
 
         setTextSize(getGlobalTextSize());
-        setTabHeight(Text::getLineHeight(m_fontCached, m_textSize) * 1.25f + m_bordersCached.getTop() + m_bordersCached.getBottom());
+        setTabHeight(std::round(Text::getLineHeight(m_fontCached, m_textSizeCached) * 1.25f) + m_bordersCached.getTop() + m_bordersCached.getBottom());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -57,7 +63,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    Tabs::Ptr Tabs::copy(Tabs::ConstPtr tabs)
+    Tabs::Ptr Tabs::copy(const Tabs::ConstPtr& tabs)
     {
         if (tabs)
             return std::static_pointer_cast<Tabs>(tabs->clone());
@@ -84,13 +90,6 @@ namespace tgui
     TabsRenderer* Tabs::getRenderer()
     {
         return aurora::downcast<TabsRenderer*>(Widget::getRenderer());
-    }
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    const TabsRenderer* Tabs::getRenderer() const
-    {
-        return aurora::downcast<const TabsRenderer*>(Widget::getRenderer());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -160,7 +159,7 @@ namespace tgui
         newTab.text.setCharacterSize(getTextSize());
         newTab.text.setString(text);
 
-        m_tabs.insert(m_tabs.begin() + index, std::move(newTab));
+        m_tabs.insert(m_tabs.begin() + static_cast<std::ptrdiff_t>(index), std::move(newTab));
         recalculateTabsWidth();
 
         // New hovered tab depends on several factors, we keep it simple and just remove the hover state
@@ -225,12 +224,10 @@ namespace tgui
             return false;
         }
 
-        if (m_selectedTab >= 0)
-            m_tabs[m_selectedTab].text.setColor(m_textColorCached);
-
         // Select the tab
         m_selectedTab = static_cast<int>(index);
-        m_tabs[m_selectedTab].text.setColor(m_selectedTextColorCached);
+        m_tabs[index].text.setColor(m_selectedTextColorCached);
+        updateTextColors();
 
         // Send the callback
         onTabSelect.emit(this, m_tabs[index].text.getString());
@@ -243,7 +240,7 @@ namespace tgui
     {
         if (m_selectedTab >= 0)
         {
-            m_tabs[m_selectedTab].text.setColor(m_textColorCached);
+            updateTextColors();
             m_selectedTab = -1;
         }
     }
@@ -270,7 +267,7 @@ namespace tgui
             return false;
 
         // Remove the tab
-        m_tabs.erase(m_tabs.begin() + index);
+        m_tabs.erase(m_tabs.begin() + static_cast<std::ptrdiff_t>(index));
 
         // Check if the selected tab should be updated
         if (m_selectedTab == static_cast<int>(index))
@@ -300,7 +297,7 @@ namespace tgui
     String Tabs::getSelected() const
     {
         if (m_selectedTab >= 0)
-            return m_tabs[m_selectedTab].text.getString();
+            return m_tabs[static_cast<std::size_t>(m_selectedTab)].text.getString();
         else
             return "";
     }
@@ -356,22 +353,15 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Tabs::setTextSize(unsigned int size)
+    void Tabs::updateTextSize()
     {
-        if ((size == 0) || (m_requestedTextSize != size))
-        {
-            m_requestedTextSize = size;
+        if ((m_textSize == 0) && !getSharedRenderer()->getTextSize())
+            m_textSizeCached = Text::findBestTextSize(m_fontCached, (getSize().y - m_bordersCached.getTop() - m_bordersCached.getBottom()) * 0.8f);
 
-            if (size == 0)
-                m_textSize = Text::findBestTextSize(m_fontCached, (getSize().y - m_bordersCached.getTop() - m_bordersCached.getBottom()) * 0.8f);
-            else
-                m_textSize = size;
+        for (auto& tab : m_tabs)
+            tab.text.setCharacterSize(m_textSizeCached);
 
-            for (auto& tab : m_tabs)
-                tab.text.setCharacterSize(m_textSize);
-
-            recalculateTabsWidth();
-        }
+        recalculateTabsWidth();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -382,8 +372,8 @@ namespace tgui
         m_bordersCached.updateParentSize(getSize());
 
         // Recalculate the size when the text is auto sizing
-        if (m_requestedTextSize == 0)
-            setTextSize(0);
+        if ((m_textSize == 0) && !getSharedRenderer()->getTextSize())
+            updateTextSize();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -434,7 +424,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Tabs::leftMousePressed(Vector2f pos)
+    bool Tabs::leftMousePressed(Vector2f pos)
     {
         pos -= getPosition();
 
@@ -454,6 +444,8 @@ namespace tgui
                 break;
             }
         }
+
+        return false;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -461,6 +453,8 @@ namespace tgui
     void Tabs::mouseMoved(Vector2f pos)
     {
         Widget::mouseMoved(pos);
+
+        const int oldHoveringTab = m_hoveringTab;
 
         pos -= getPosition();
         m_hoveringTab = -1;
@@ -483,6 +477,9 @@ namespace tgui
                 break;
             }
         }
+
+        if (m_hoveringTab != oldHoveringTab)
+            updateTextColors();
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -491,7 +488,11 @@ namespace tgui
     {
         Widget::mouseNoLongerOnWidget();
 
-        m_hoveringTab = -1;
+        if (m_hoveringTab >= 0)
+        {
+            m_hoveringTab = -1;
+            updateTextColors();
+        }
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -499,9 +500,9 @@ namespace tgui
     void Tabs::recalculateTabsWidth()
     {
         std::size_t visibleTabs = 0;
-        for (std::size_t i = 0; i < m_tabs.size(); ++i)
+        for (const auto& tab : m_tabs)
         {
-            if (m_tabs[i].visible)
+            if (tab.visible)
                 visibleTabs++;
         }
 
@@ -513,16 +514,16 @@ namespace tgui
             {
                 // First calculate the width of the tabs as if there aren't any borders
                 float totalWidth = 0;
-                for (std::size_t i = 0; i < m_tabs.size(); ++i)
+                for (auto& tab : m_tabs)
                 {
-                    if (!m_tabs[i].visible)
+                    if (!tab.visible)
                         continue;
 
-                    m_tabs[i].width = m_tabs[i].text.getSize().x + std::max(m_minimumTabWidth, 2 * m_distanceToSideCached);
-                    if ((m_maximumTabWidth > 0) && (m_maximumTabWidth < m_tabs[i].width))
-                        m_tabs[i].width = m_maximumTabWidth;
+                    tab.width = tab.text.getSize().x + std::max(m_minimumTabWidth, 2 * m_distanceToSideCached);
+                    if ((m_maximumTabWidth > 0) && (m_maximumTabWidth < tab.width))
+                        tab.width = m_maximumTabWidth;
 
-                    totalWidth += m_tabs[i].width;
+                    totalWidth += tab.width;
                 }
 
                 // Now add the borders to the tabs
@@ -534,8 +535,8 @@ namespace tgui
         else // A size was provided
         {
             const float tabWidth = (getSize().x - ((visibleTabs + 1) * ((m_bordersCached.getLeft() + m_bordersCached.getRight()) / 2.f))) / visibleTabs;
-            for (std::size_t i = 0; i < m_tabs.size(); ++i)
-                m_tabs[i].width = tabWidth;
+            for (auto& tab : m_tabs)
+                tab.width = tabWidth;
         }
 
         m_bordersCached.updateParentSize(getSize());
@@ -555,98 +556,98 @@ namespace tgui
 
     void Tabs::rendererChanged(const String& property)
     {
-        if (property == "Borders")
+        if (property == U"Borders")
         {
             m_bordersCached = getSharedRenderer()->getBorders();
             recalculateTabsWidth();
         }
-        else if (property == "TextColor")
+        else if (property == U"TextColor")
         {
             m_textColorCached = getSharedRenderer()->getTextColor();
             updateTextColors();
         }
-        else if (property == "TextColorHover")
+        else if (property == U"TextColorHover")
         {
             m_textColorHoverCached = getSharedRenderer()->getTextColorHover();
             updateTextColors();
         }
-        else if (property == "TextColorDisabled")
+        else if (property == U"TextColorDisabled")
         {
             m_textColorDisabledCached = getSharedRenderer()->getTextColorDisabled();
             updateTextColors();
         }
-        else if (property == "SelectedTextColor")
+        else if (property == U"SelectedTextColor")
         {
             m_selectedTextColorCached = getSharedRenderer()->getSelectedTextColor();
             updateTextColors();
         }
-        else if (property == "SelectedTextColorHover")
+        else if (property == U"SelectedTextColorHover")
         {
             m_selectedTextColorHoverCached = getSharedRenderer()->getSelectedTextColorHover();
             updateTextColors();
         }
-        else if (property == "TextureTab")
+        else if (property == U"TextureTab")
         {
             m_spriteTab.setTexture(getSharedRenderer()->getTextureTab());
         }
-        else if (property == "TextureTabHover")
+        else if (property == U"TextureTabHover")
         {
             m_spriteTabHover.setTexture(getSharedRenderer()->getTextureTabHover());
         }
-        else if (property == "TextureSelectedTab")
+        else if (property == U"TextureSelectedTab")
         {
             m_spriteSelectedTab.setTexture(getSharedRenderer()->getTextureSelectedTab());
         }
-        else if (property == "TextureSelectedTabHover")
+        else if (property == U"TextureSelectedTabHover")
         {
             m_spriteSelectedTabHover.setTexture(getSharedRenderer()->getTextureSelectedTabHover());
         }
-        else if (property == "TextureDisabledTab")
+        else if (property == U"TextureDisabledTab")
         {
             m_spriteDisabledTab.setTexture(getSharedRenderer()->getTextureDisabledTab());
         }
-        else if (property == "DistanceToSide")
+        else if (property == U"DistanceToSide")
         {
             m_distanceToSideCached = getSharedRenderer()->getDistanceToSide();
             recalculateTabsWidth();
         }
-        else if (property == "BackgroundColor")
+        else if (property == U"BackgroundColor")
         {
             m_backgroundColorCached = getSharedRenderer()->getBackgroundColor();
         }
-        else if (property == "BackgroundColorHover")
+        else if (property == U"BackgroundColorHover")
         {
             m_backgroundColorHoverCached = getSharedRenderer()->getBackgroundColorHover();
         }
-        else if (property == "BackgroundColorDisabled")
+        else if (property == U"BackgroundColorDisabled")
         {
             m_backgroundColorDisabledCached = getSharedRenderer()->getBackgroundColorDisabled();
         }
-        else if (property == "SelectedBackgroundColor")
+        else if (property == U"SelectedBackgroundColor")
         {
             m_selectedBackgroundColorCached = getSharedRenderer()->getSelectedBackgroundColor();
         }
-        else if (property == "SelectedBackgroundColorHover")
+        else if (property == U"SelectedBackgroundColorHover")
         {
             m_selectedBackgroundColorHoverCached = getSharedRenderer()->getSelectedBackgroundColorHover();
         }
-        else if (property == "BorderColor")
+        else if (property == U"BorderColor")
         {
             m_borderColorCached = getSharedRenderer()->getBorderColor();
         }
-        else if (property == "BorderColorHover")
+        else if (property == U"BorderColorHover")
         {
             m_borderColorHoverCached = getSharedRenderer()->getBorderColorHover();
         }
-        else if (property == "SelectedBorderColor")
+        else if (property == U"SelectedBorderColor")
         {
             m_selectedBorderColorCached = getSharedRenderer()->getSelectedBorderColor();
         }
-        else if (property == "SelectedBorderColorHover")
+        else if (property == U"SelectedBorderColorHover")
         {
             m_selectedBorderColorHoverCached = getSharedRenderer()->getSelectedBorderColorHover();
         }
-        else if ((property == "Opacity") || (property == "OpacityDisabled"))
+        else if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
             Widget::rendererChanged(property);
 
@@ -659,7 +660,7 @@ namespace tgui
             for (auto& tab : m_tabs)
                 tab.text.setOpacity(m_opacityCached);
         }
-        else if (property == "Font")
+        else if (property == U"Font")
         {
             Widget::rendererChanged(property);
 
@@ -667,8 +668,8 @@ namespace tgui
                 tab.text.setFont(m_fontCached);
 
             // Recalculate the size when the text is auto sizing
-            if (m_requestedTextSize == 0)
-                setTextSize(0);
+            if ((m_textSize == 0) && !getSharedRenderer()->getTextSize())
+                updateTextSize();
             else
                 recalculateTabsWidth();
         }
@@ -705,27 +706,26 @@ namespace tgui
             tabVisibleList += "]";
             tabEnabledList += "]";
 
-            node->propertyValuePairs["Tabs"] = std::make_unique<DataIO::ValueNode>(tabList);
+            node->propertyValuePairs[U"Tabs"] = std::make_unique<DataIO::ValueNode>(tabList);
             if (!allTabsVisible)
-                node->propertyValuePairs["TabsVisible"] = std::make_unique<DataIO::ValueNode>(tabVisibleList);
+                node->propertyValuePairs[U"TabsVisible"] = std::make_unique<DataIO::ValueNode>(tabVisibleList);
             if (!allTabsEnabled)
-                node->propertyValuePairs["TabsEnabled"] = std::make_unique<DataIO::ValueNode>(tabEnabledList);
+                node->propertyValuePairs[U"TabsEnabled"] = std::make_unique<DataIO::ValueNode>(tabEnabledList);
         }
 
         if (getSelectedIndex() >= 0)
-            node->propertyValuePairs["Selected"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(getSelectedIndex()));
+            node->propertyValuePairs[U"Selected"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(getSelectedIndex()));
 
         if (m_maximumTabWidth > 0)
-            node->propertyValuePairs["MaximumTabWidth"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_maximumTabWidth));
+            node->propertyValuePairs[U"MaximumTabWidth"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_maximumTabWidth));
 
         if (m_autoSize)
         {
             node->propertyValuePairs.erase("Size");
-            node->propertyValuePairs["TabHeight"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(getSize().y));
+            node->propertyValuePairs[U"TabHeight"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(getSize().y));
         }
 
-        node->propertyValuePairs["TextSize"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_textSize));
-        node->propertyValuePairs["AutoSize"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_autoSize));
+        node->propertyValuePairs[U"AutoSize"] = std::make_unique<DataIO::ValueNode>(String::fromNumber(m_autoSize));
 
         return node;
     }
@@ -736,43 +736,41 @@ namespace tgui
     {
         Widget::load(node, renderers);
 
-        if (node->propertyValuePairs["Tabs"])
+        if (node->propertyValuePairs[U"Tabs"])
         {
-            if (!node->propertyValuePairs["Tabs"]->listNode)
-                throw Exception{"Failed to parse 'Tabs' property, expected a list as value"};
+            if (!node->propertyValuePairs[U"Tabs"]->listNode)
+                throw Exception{U"Failed to parse 'Tabs' property, expected a list as value"};
 
-            for (const auto& tabText : node->propertyValuePairs["Tabs"]->valueList)
+            for (const auto& tabText : node->propertyValuePairs[U"Tabs"]->valueList)
                 add(Deserializer::deserialize(ObjectConverter::Type::String, tabText).getString(), false);
         }
 
-        if (node->propertyValuePairs["TabsVisible"])
+        if (node->propertyValuePairs[U"TabsVisible"])
         {
-            if (!node->propertyValuePairs["TabsVisible"]->listNode)
-                throw Exception{"Failed to parse 'TabsVisible' property, expected a list as value"};
+            if (!node->propertyValuePairs[U"TabsVisible"]->listNode)
+                throw Exception{U"Failed to parse 'TabsVisible' property, expected a list as value"};
 
-            const auto& values = node->propertyValuePairs["TabsVisible"]->valueList;
+            const auto& values = node->propertyValuePairs[U"TabsVisible"]->valueList;
             for (std::size_t i = 0; i < values.size(); ++i)
                 setTabVisible(i, Deserializer::deserialize(ObjectConverter::Type::Bool, values[i]).getBool());
         }
 
-        if (node->propertyValuePairs["TabsEnabled"])
+        if (node->propertyValuePairs[U"TabsEnabled"])
         {
-            if (!node->propertyValuePairs["TabsEnabled"]->listNode)
-                throw Exception{"Failed to parse 'TabsEnabled' property, expected a list as value"};
+            if (!node->propertyValuePairs[U"TabsEnabled"]->listNode)
+                throw Exception{U"Failed to parse 'TabsEnabled' property, expected a list as value"};
 
-            const auto& values = node->propertyValuePairs["TabsEnabled"]->valueList;
+            const auto& values = node->propertyValuePairs[U"TabsEnabled"]->valueList;
             for (std::size_t i = 0; i < values.size(); ++i)
                 setTabEnabled(i, Deserializer::deserialize(ObjectConverter::Type::Bool, values[i]).getBool());
         }
 
-        if (node->propertyValuePairs["MaximumTabWidth"])
-            setMaximumTabWidth(node->propertyValuePairs["MaximumTabWidth"]->value.toFloat());
-        if (node->propertyValuePairs["TextSize"])
-            setTextSize(node->propertyValuePairs["TextSize"]->value.toInt());
-        if (node->propertyValuePairs["TabHeight"])
-            setTabHeight(node->propertyValuePairs["TabHeight"]->value.toFloat());
-        if (node->propertyValuePairs["Selected"])
-            select(node->propertyValuePairs["Selected"]->value.toInt());
+        if (node->propertyValuePairs[U"MaximumTabWidth"])
+            setMaximumTabWidth(node->propertyValuePairs[U"MaximumTabWidth"]->value.toFloat());
+        if (node->propertyValuePairs[U"TabHeight"])
+            setTabHeight(node->propertyValuePairs[U"TabHeight"]->value.toFloat());
+        if (node->propertyValuePairs[U"Selected"])
+            select(node->propertyValuePairs[U"Selected"]->value.toUInt());
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -792,22 +790,22 @@ namespace tgui
             if (m_selectedTab >= 0)
             {
                 if ((m_selectedTab == m_hoveringTab) && m_selectedTextColorHoverCached.isSet())
-                    m_tabs[m_selectedTab].text.setColor(m_selectedTextColorHoverCached);
+                    m_tabs[static_cast<std::size_t>(m_selectedTab)].text.setColor(m_selectedTextColorHoverCached);
                 else if (m_selectedTextColorCached.isSet())
-                    m_tabs[m_selectedTab].text.setColor(m_selectedTextColorCached);
+                    m_tabs[static_cast<std::size_t>(m_selectedTab)].text.setColor(m_selectedTextColorCached);
             }
 
             if ((m_hoveringTab >= 0) && (m_selectedTab != m_hoveringTab))
             {
                 if (m_textColorHoverCached.isSet())
-                    m_tabs[m_hoveringTab].text.setColor(m_textColorHoverCached);
+                    m_tabs[static_cast<std::size_t>(m_hoveringTab)].text.setColor(m_textColorHoverCached);
             }
         }
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Tabs::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void Tabs::draw(BackendRenderTarget& target, RenderStates states) const
     {
         // Draw the borders around the tabs
         if (m_bordersCached != Borders{0})
@@ -926,6 +924,13 @@ namespace tgui
             if (clippingRequired)
                 target.removeClippingLayer();
         }
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    Widget::Ptr Tabs::clone() const
+    {
+        return std::make_shared<Tabs>(*this);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

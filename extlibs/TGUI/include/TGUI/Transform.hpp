@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -31,9 +31,13 @@
 #include <TGUI/Config.hpp>
 #include <TGUI/Rect.hpp>
 
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <array>
+#endif
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace tgui
+TGUI_MODULE_EXPORT namespace tgui
 {
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @brief Defines a transform matrix
@@ -72,24 +76,24 @@ namespace tgui
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @brief Constructs a transform from a 4x4 matrix
         ///
-        /// @param matrix  Pointer to a 4x4 matrix, similar to what getMatrix returns
+        /// @param matrix  4x4 transform matrix, similar to what getMatrix returns
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Transform(const float matrix[16]);
+        Transform(const std::array<float, 16>& matrix);
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @brief Return the transform as a 4x4 matrix
         ///
-        /// This function returns a pointer to an array of 16 floats containing the transform elements as a 4x4 matrix, which is
+        /// This function returns an array of 16 floats containing the transform elements as a 4x4 matrix, which is
         /// directly compatible with OpenGL functions.
         ///
         /// @code
-        /// glLoadMatrixf(transform.getMatrix());
+        /// glLoadMatrixf(transform.getMatrix().data());
         /// @endcode
         ///
-        /// @return Pointer to a 4x4 matrix
+        /// @return 4x4 transform matrix
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        const float* getMatrix() const;
+        TGUI_NODISCARD const std::array<float, 16>& getMatrix() const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -99,7 +103,7 @@ namespace tgui
         ///
         /// If the inverse cannot be computed, an identity transform is returned.
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Transform getInverse() const;
+        TGUI_NODISCARD Transform getInverse() const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -109,7 +113,7 @@ namespace tgui
         ///
         /// @return Transformed point
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Vector2f transformPoint(const Vector2f& point) const;
+        TGUI_NODISCARD Vector2f transformPoint(const Vector2f& point) const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -121,7 +125,7 @@ namespace tgui
         ///
         /// @return Transformed rectangle
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        FloatRect transformRect(const FloatRect& rectangle) const;
+        TGUI_NODISCARD FloatRect transformRect(const FloatRect& rectangle) const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -182,21 +186,24 @@ namespace tgui
         ///
         /// @see combine
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        Transform operator *(const Transform& right) const;
+        TGUI_NODISCARD Transform operator *(const Transform& right) const;
         Transform& operator *=(const Transform& right);
-        Vector2f operator *(const Vector2f& right) const;
+        TGUI_NODISCARD Vector2f operator *(const Vector2f& right) const;
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        /// @brief Rounds the position stored in the transform to the nearest integer
+        /// @brief Rounds the position stored in the transform to the nearest pixel
+        ///
+        /// @param pixelScaleX  Pixels per point horizontally
+        /// @param pixelScaleY  Pixels per point vertically
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        void roundPosition();
+        void roundPosition(float pixelScaleX, float pixelScaleY);
 
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     private:
 
-        float m_matrix[16]; //!< 4x4 matrix defining the transformation
+        std::array<float, 16> m_matrix; //!< 4x4 matrix defining the transformation
     };
 }
 

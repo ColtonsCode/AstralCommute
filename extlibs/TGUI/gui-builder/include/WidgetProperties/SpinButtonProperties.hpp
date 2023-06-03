@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -27,11 +27,10 @@
 #define TGUI_GUI_BUILDER_SPIN_BUTTON_PROPERTIES_HPP
 
 #include "WidgetProperties.hpp"
-#include <TGUI/Widgets/SpinButton.hpp>
 
 struct SpinButtonProperties : WidgetProperties
 {
-    void updateProperty(tgui::Widget::Ptr widget, const tgui::String& property, const tgui::String& value) const override
+    void updateProperty(const tgui::Widget::Ptr& widget, const tgui::String& property, const tgui::String& value) const override
     {
         auto spinButton = widget->cast<tgui::SpinButton>();
         if (property == "Minimum")
@@ -48,7 +47,7 @@ struct SpinButtonProperties : WidgetProperties
             WidgetProperties::updateProperty(widget, property, value);
     }
 
-    PropertyValueMapPair initProperties(tgui::Widget::Ptr widget) const override
+    TGUI_NODISCARD PropertyValueMapPair initProperties(const tgui::Widget::Ptr& widget) const override
     {
         auto pair = WidgetProperties::initProperties(widget);
         auto spinButton = widget->cast<tgui::SpinButton>();
@@ -56,7 +55,7 @@ struct SpinButtonProperties : WidgetProperties
         pair.first["Maximum"] = {"Float", tgui::String::fromNumber(spinButton->getMaximum())};
         pair.first["Value"] = {"Float", tgui::String::fromNumber(spinButton->getValue())};
         pair.first["Step"] = {"Float", tgui::String::fromNumber(spinButton->getStep())};
-        pair.first["VerticalScroll"] = {"Bool", tgui::String::fromNumber(spinButton->getVerticalScroll())};
+        pair.first["VerticalScroll"] = {"Bool", tgui::Serializer::serialize(spinButton->getVerticalScroll())};
 
         const auto renderer = spinButton->getSharedRenderer();
         pair.second["Borders"] = {"Outline", tgui::Serializer::serialize(renderer->getBorders())};

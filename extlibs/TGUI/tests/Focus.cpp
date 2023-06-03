@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -22,23 +22,14 @@
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "Tests.hpp"
-#include <TGUI/Widgets/RadioButtonGroup.hpp>
-#include <TGUI/Widgets/ChildWindow.hpp>
-#include <TGUI/Widgets/RadioButton.hpp>
-#include <TGUI/Widgets/CheckBox.hpp>
-#include <TGUI/Widgets/TextArea.hpp>
-#include <TGUI/Widgets/EditBox.hpp>
-#include <TGUI/Widgets/Button.hpp>
-#include <TGUI/Widgets/Group.hpp>
-#include <TGUI/Widgets/Panel.hpp>
-#include <TGUI/Widgets/Label.hpp>
 #include <stack>
 #include <set>
 
+#include "Tests.hpp"
+
 static tgui::Container::Ptr rootContainer;
 
-static bool noWidgetsFocused(tgui::Container::Ptr root)
+static bool noWidgetsFocused(const tgui::Container::Ptr& root)
 {
     for (auto& widget : root->getWidgets())
     {
@@ -56,7 +47,7 @@ static bool noWidgetsFocused(tgui::Container::Ptr root)
     return true;
 }
 
-static bool widgetFocused(tgui::Widget::Ptr widget)
+static bool widgetFocused(const tgui::Widget::Ptr& widget)
 {
     if (!widget->isFocused())
         return false;

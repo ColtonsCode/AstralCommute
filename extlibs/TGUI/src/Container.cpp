@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -25,13 +25,15 @@
 
 #include <TGUI/Container.hpp>
 #include <TGUI/ToolTip.hpp>
-#include <TGUI/GuiBase.hpp>
+#include <TGUI/Backend/Window/BackendGui.hpp>
 #include <TGUI/Widgets/RadioButton.hpp>
 #include <TGUI/SubwidgetContainer.hpp>
 #include <TGUI/Loading/WidgetFactory.hpp>
 #include <TGUI/Filesystem.hpp>
 
-#include <fstream>
+#if !TGUI_EXPERIMENTAL_USE_STD_MODULE
+    #include <fstream>
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -109,7 +111,7 @@ namespace tgui
                         continue;
 
                     // Skip "Font = null"
-                    if (pair.first == "Font" && value == "null")
+                    if (pair.first == U"Font" && value == U"null")
                         continue;
 
                     node->propertyValuePairs[pair.first] = std::make_unique<DataIO::ValueNode>(value);
@@ -125,10 +127,10 @@ namespace tgui
         {
             for (const auto& pair : node->propertyValuePairs)
             {
-                if (!pair.first.startsWith(U"Texture") && (pair.first != U"Font") && (pair.first != U"Image"))
+                if (!pair.first.starts_with(U"Texture") && (pair.first != U"Font") && (pair.first != U"Image") && (pair.first != U"Icon"))
                     continue;
 
-                if (pair.second->value.empty() || pair.second->value.equalIgnoreCase(U"none") || pair.second->value.equalIgnoreCase(U"null") || pair.second->value.equalIgnoreCase(U"nullptr"))
+                if (pair.second->value.empty() || viewEqualIgnoreCase(pair.second->value, U"none") || viewEqualIgnoreCase(pair.second->value, U"null") || viewEqualIgnoreCase(pair.second->value, U"nullptr"))
                     continue;
 
                 String filename;
@@ -143,7 +145,7 @@ namespace tgui
                 }
 
                 // Make the path relative to the form file
-                if (filename.startsWith(formPath))
+                if (filename.starts_with(formPath))
                 {
                     if (pair.second->value[0] != '"')
                         pair.second->value.erase(0, formPath.length());
@@ -174,11 +176,11 @@ namespace tgui
         // They all need to be in m_widgets before setParent is called on the first widget,
         // which is why we can't just use call add(widget) for each widget.
         m_widgets.reserve(other.m_widgets.size());
-        for (std::size_t i = 0; i < other.m_widgets.size(); ++i)
-            m_widgets.push_back(other.m_widgets[i]->clone());
+        for (const auto& widget : other.m_widgets)
+            m_widgets.emplace_back(widget->clone());
 
-        for (std::size_t i = 0; i < other.m_widgets.size(); ++i)
-            widgetAdded(m_widgets[i]);
+        for (const auto& widget : m_widgets)
+            widgetAdded(widget);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -189,7 +191,8 @@ namespace tgui
         m_widgetBelowMouse        {std::move(other.m_widgetBelowMouse)},
         m_widgetWithLeftMouseDown {std::move(other.m_widgetWithLeftMouseDown)},
         m_widgetWithRightMouseDown{std::move(other.m_widgetWithRightMouseDown)},
-        m_focusedWidget           {std::move(other.m_focusedWidget)}
+        m_focusedWidget           {std::move(other.m_focusedWidget)},
+        m_draggingWidget          {std::move(other.m_draggingWidget)}
     {
         // Parent of all widgets should be set to nullptr first, in case widgets have layouts depending on each other.
         // Otherwise calling setParent on one widget could cause another widget's position to be recalculated which could
@@ -199,8 +202,6 @@ namespace tgui
 
         for (auto& widget : m_widgets)
             widget->setParent(this);
-
-        other.m_widgets = {};
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -227,6 +228,7 @@ namespace tgui
             m_widgetWithLeftMouseDown = nullptr;
             m_widgetWithRightMouseDown = nullptr;
             m_focusedWidget = nullptr;
+            m_draggingWidget = false;
 
             // Remove all the old widgets
             Container::removeAllWidgets();
@@ -235,11 +237,11 @@ namespace tgui
             // They all need to be in m_widgets before setParent is called on the first widget,
             // which is why we can't just use call add(widget) for each widget.
             m_widgets.reserve(right.m_widgets.size());
-            for (std::size_t i = 0; i < right.m_widgets.size(); ++i)
-                m_widgets.push_back(right.m_widgets[i]->clone());
+            for (auto& widget : right.m_widgets)
+                m_widgets.emplace_back(widget->clone());
 
-            for (std::size_t i = 0; i < right.m_widgets.size(); ++i)
-                widgetAdded(m_widgets[i]);
+            for (auto& widget : m_widgets)
+                widgetAdded(widget);
         }
 
         return *this;
@@ -252,12 +254,13 @@ namespace tgui
         // Make sure it is not the same widget
         if (this != &right)
         {
-            Widget::operator=(std::move(right));
             m_widgets                  = std::move(right.m_widgets);
             m_widgetBelowMouse         = std::move(right.m_widgetBelowMouse);
             m_widgetWithLeftMouseDown  = std::move(right.m_widgetWithLeftMouseDown);
             m_widgetWithRightMouseDown = std::move(right.m_widgetWithRightMouseDown);
             m_focusedWidget            = std::move(right.m_focusedWidget);
+            m_draggingWidget           = std::move(right.m_draggingWidget);
+            Widget::operator=(std::move(right));
 
             // Parent of all widgets should be set to nullptr first, in case widgets have layouts depending on each other.
             // Otherwise calling setParent on one widget could cause another widget's position to be recalculated which could
@@ -267,8 +270,6 @@ namespace tgui
 
             for (auto& widget : m_widgets)
                 widget->setParent(this);
-
-            right.m_widgets = {};
         }
 
         return *this;
@@ -359,11 +360,23 @@ namespace tgui
                 m_parentGui->requestMouseCursor(m_mouseCursor);
 
             if (m_widgetBelowMouse == widget)
+            {
+                m_widgetBelowMouse->mouseNoLongerOnWidget();
                 m_widgetBelowMouse = nullptr;
+            }
+
             if (m_widgetWithLeftMouseDown == widget)
+            {
+                m_widgetWithLeftMouseDown->leftMouseButtonNoLongerDown();
                 m_widgetWithLeftMouseDown = nullptr;
+                m_draggingWidget = false;
+            }
+
             if (m_widgetWithRightMouseDown == widget)
+            {
+                m_widgetWithRightMouseDown->rightMouseButtonNoLongerDown();
                 m_widgetWithRightMouseDown = nullptr;
+            }
 
             if (widget == m_focusedWidget)
             {
@@ -373,7 +386,7 @@ namespace tgui
 
             // Remove the widget
             widget->setParent(nullptr);
-            m_widgets.erase(m_widgets.begin() + i);
+            m_widgets.erase(m_widgets.begin() + static_cast<std::ptrdiff_t>(i));
             return true;
         }
 
@@ -396,6 +409,7 @@ namespace tgui
         m_widgetWithLeftMouseDown = nullptr;
         m_widgetWithRightMouseDown = nullptr;
         m_focusedWidget = nullptr;
+        m_draggingWidget = false;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -407,23 +421,21 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Container::setTextSize(unsigned int size)
+    void Container::updateTextSize()
     {
-        Widget::setTextSize(size);
+        if (m_textSizeCached == 0)
+            return;
 
-        if (size != 0)
-        {
-            for (const auto& widget : m_widgets)
-                widget->setTextSize(size);
-        }
+        for (const auto& widget : m_widgets)
+            widget->setTextSize(m_textSizeCached);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     void Container::loadWidgetsFromFile(const String& filename, bool replaceExisting)
     {
-        auto oldTheme = tgui::Theme::getDefault();
-        tgui::Theme::setDefault(nullptr);
+        auto oldTheme = Theme::getDefault();
+        Theme::setDefault(nullptr);
 
         // If a resource path is set then place it in front of the filename (unless the filename is an absolute path)
         String filenameInResources = filename;
@@ -433,7 +445,7 @@ namespace tgui
         std::size_t fileSize;
         auto fileContents = readFileToMemory(filenameInResources, fileSize);
         if (!fileContents)
-            throw Exception{"Failed to open '" + filenameInResources + "' to load the widgets from it."};
+            throw Exception{U"Failed to open '" + filenameInResources + U"' to load the widgets from it."};
 
         /// TODO: Optimize this (parse function should be able to use a string view directly on file contents)
         std::stringstream stream{std::string{reinterpret_cast<const char*>(fileContents.get()), fileSize}};
@@ -449,7 +461,7 @@ namespace tgui
 
         loadWidgetsFromNodeTree(rootNode, replaceExisting);
 
-        tgui::Theme::setDefault(oldTheme);
+        Theme::setDefault(oldTheme);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -467,7 +479,7 @@ namespace tgui
         saveWidgetsToStream(stream, formFileDir);
 
         if (!writeFile(filenameInResources, stream))
-            throw Exception{"Failed to write '" + filenameInResources + "' while trying to save widgets in it."};
+            throw Exception{U"Failed to write '" + filenameInResources + U"' while trying to save widgets in it."};
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -515,7 +527,7 @@ namespace tgui
             if (nameSeparator != String::npos)
                 objectName = Deserializer::deserialize(ObjectConverter::Type::String, node->name.substr(nameSeparator + 1)).getString();
 
-            if (widgetType == "Renderer")
+            if (widgetType == U"Renderer")
             {
                 if (!objectName.empty())
                     availableRenderers[objectName] = RendererData::createFromDataIONode(node.get());
@@ -531,10 +543,10 @@ namespace tgui
                     // We delay loading of widgets until they have all been added to the container.
                     // Otherwise there would be issues if their position and size layouts refer to
                     // widgets that have not yet been loaded.
-                    widgetsToLoad.push_back(std::make_pair(widget, std::cref(node)));
+                    widgetsToLoad.emplace_back(widget, std::cref(node));
                 }
                 else
-                    throw Exception{"No construct function exists for widget type '" + widgetType + "'."};
+                    throw Exception{U"No construct function exists for widget type '" + widgetType + U"'."};
             }
         }
 
@@ -606,7 +618,7 @@ namespace tgui
             m_widgets.push_back(m_widgets[i]);
 
             // Remove the old widget
-            m_widgets.erase(m_widgets.begin() + i);
+            m_widgets.erase(m_widgets.begin() + static_cast<std::ptrdiff_t>(i));
             break;
         }
     }
@@ -626,7 +638,7 @@ namespace tgui
             m_widgets.insert(m_widgets.begin(), obj);
 
             // Remove the old widget
-            m_widgets.erase(m_widgets.begin() + i + 1);
+            m_widgets.erase(m_widgets.begin() + static_cast<std::ptrdiff_t>(i + 1));
             break;
         }
     }
@@ -697,8 +709,8 @@ namespace tgui
             return true;
 
         // Move the widget to the new index
-        m_widgets.erase(m_widgets.begin() + currentWidgetIndex);
-        m_widgets.insert(m_widgets.begin() + index, widget);
+        m_widgets.erase(m_widgets.begin() + static_cast<std::ptrdiff_t>(currentWidgetIndex));
+        m_widgets.insert(m_widgets.begin() + static_cast<std::ptrdiff_t>(index), widget);
         return true;
     }
 
@@ -729,7 +741,7 @@ namespace tgui
         if (!m_focusedWidget || !m_focusedWidget->isContainer())
             return m_focusedWidget;
 
-        const auto leafWidget = std::static_pointer_cast<Container>(m_focusedWidget)->getFocusedLeaf();
+        auto leafWidget = std::static_pointer_cast<Container>(m_focusedWidget)->getFocusedLeaf();
 
         // If the container has no focused child then the container itself is the leaf
         if (!leafWidget)
@@ -744,9 +756,9 @@ namespace tgui
     {
         pos -= getPosition() + getChildWidgetsOffset();
 
-        for (auto it = m_widgets.rbegin(); it != m_widgets.rend(); ++it)
+        for (auto it = m_widgets.crbegin(); it != m_widgets.crend(); ++it)
         {
-            auto& widget = *it;
+            const auto& widget = *it;
 
             // Look for a visible widget below the mouse
             if (!widget->isVisible())
@@ -883,10 +895,11 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Container::leftMousePressed(Vector2f pos)
+    bool Container::leftMousePressed(Vector2f pos)
     {
         Widget::leftMousePressed(pos);
         processMousePressEvent(Event::MouseButton::Left, pos - getPosition() - getChildWidgetsOffset());
+        return m_draggingWidget;
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -937,9 +950,9 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    bool Container::mouseWheelScrolled(float delta, Vector2f pos)
+    bool Container::scrolled(float delta, Vector2f pos, bool touch)
     {
-        return processMouseWheelScrollEvent(delta, pos - getPosition() - getChildWidgetsOffset());
+        return processScrollEvent(delta, pos - getPosition() - getChildWidgetsOffset(), touch);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -968,6 +981,7 @@ namespace tgui
         {
             m_widgetWithLeftMouseDown->leftMouseButtonNoLongerDown();
             m_widgetWithLeftMouseDown = nullptr;
+            m_draggingWidget = false;
         }
     }
 
@@ -992,7 +1006,7 @@ namespace tgui
             return nullptr;
 
         // We shouldn't show tooltips when dragging something
-        if (m_widgetWithLeftMouseDown && (m_widgetWithLeftMouseDown->isDraggableWidget() || m_widgetWithLeftMouseDown->isContainer()))
+        if (m_draggingWidget)
             return nullptr;
 
         Widget::Ptr toolTip = nullptr;
@@ -1019,12 +1033,12 @@ namespace tgui
     {
         Widget::rendererChanged(property);
 
-        if ((property == "Opacity") || (property == "OpacityDisabled"))
+        if ((property == U"Opacity") || (property == U"OpacityDisabled"))
         {
-            for (std::size_t i = 0; i < m_widgets.size(); ++i)
-                m_widgets[i]->setInheritedOpacity(m_opacityCached);
+            for (const auto& widget : m_widgets)
+                widget->setInheritedOpacity(m_opacityCached);
         }
-        else if (property == "Font")
+        else if (property == U"Font")
         {
             for (const auto& widget : m_widgets)
             {
@@ -1071,10 +1085,10 @@ namespace tgui
                 // We delay loading of widgets until they have all been added to the container.
                 // Otherwise there would be issues if their position and size layouts refer to
                 // widgets that have not yet been loaded.
-                widgetsToLoad.push_back(std::make_pair(childWidget, std::cref(childNode)));
+                widgetsToLoad.emplace_back(childWidget, std::cref(childNode));
             }
             else
-                throw Exception{"No construct function exists for widget type '" + widgetType + "'."};
+                throw Exception{U"No construct function exists for widget type '" + widgetType + U"'."};
         }
 
         for (auto& pair : widgetsToLoad)
@@ -1090,14 +1104,13 @@ namespace tgui
     bool Container::processMouseMoveEvent(Vector2f mousePos)
     {
         // Some widgets should always receive mouse move events while dragging them, even if the mouse is no longer on top of them
-        if (m_widgetWithLeftMouseDown)
+        if (m_widgetWithLeftMouseDown && m_draggingWidget)
         {
-            if (m_widgetWithLeftMouseDown->isDraggableWidget() || m_widgetWithLeftMouseDown->isContainer())
-            {
-                m_widgetWithLeftMouseDown->mouseMoved(transformMousePos(m_widgetWithLeftMouseDown, mousePos));
-                return true;
-            }
+            m_widgetWithLeftMouseDown->mouseMoved(transformMousePos(m_widgetWithLeftMouseDown, mousePos));
+            return true;
         }
+
+        const auto oldWidgetBelowMouse = m_widgetBelowMouse.get();
 
         // Check if the mouse is on top of a widget
         Widget::Ptr widget = updateWidgetBelowMouse(mousePos);
@@ -1107,6 +1120,12 @@ namespace tgui
             widget->mouseMoved(transformMousePos(widget, mousePos));
             return true;
         }
+
+        // If there used to be a widget below the mouse but the mouse is no longer on any widget then we will still mark this
+        // event as handled by TGUI. In backends that only redraw when handleEvent returns true, this is required to update the
+        // widget now that it is no longer in hover state.
+        if (!m_widgetBelowMouse && oldWidgetBelowMouse)
+            return true;
 
         return false;
     }
@@ -1133,13 +1152,20 @@ namespace tgui
             if (!widget->isContainer())
                 widget->setFocused(true);
 
-            widget->mousePressed(button, transformMousePos(widget, mousePos));
+            if (button == Event::MouseButton::Left)
+                m_draggingWidget = widget->leftMousePressed(transformMousePos(widget, mousePos));
+            else if (button == Event::MouseButton::Right)
+                widget->rightMousePressed(transformMousePos(widget, mousePos));
+
             return true;
         }
         else // The mouse did not went down on a widget, so unfocus the focused child widget, but keep ourselves focused
         {
             if (button == Event::MouseButton::Left)
+            {
                 m_widgetWithLeftMouseDown = nullptr;
+                m_draggingWidget = false;
+            }
             else if (button == Event::MouseButton::Right)
                 m_widgetWithRightMouseDown = nullptr;
 
@@ -1165,6 +1191,7 @@ namespace tgui
         {
             m_widgetWithLeftMouseDown->leftMouseButtonNoLongerDown();
             m_widgetWithLeftMouseDown = nullptr;
+            m_draggingWidget = false;
             return true;
         }
         else if ((button == Event::MouseButton::Right) && m_widgetWithRightMouseDown)
@@ -1179,12 +1206,12 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    bool Container::processMouseWheelScrollEvent(float delta, Vector2f pos)
+    bool Container::processScrollEvent(float delta, Vector2f pos, bool touch)
     {
         // Send the event to the widget below the mouse
         Widget::Ptr widget = updateWidgetBelowMouse(pos);
         if (widget != nullptr)
-            return widget->mouseWheelScrolled(delta, transformMousePos(widget, pos));
+            return widget->scrolled(delta, transformMousePos(widget, pos), touch);
 
         return false;
     }
@@ -1233,14 +1260,13 @@ namespace tgui
         bool screenRefreshRequired = Widget::updateTime(elapsedTime);
 
         // Loop through all widgets
-        for (std::size_t i = 0; i < m_widgets.size(); ++i)
+        for (auto& widget : m_widgets)
         {
             // Update the elapsed time in widgets that need it
-            if (m_widgets[i]->isVisible())
-                screenRefreshRequired |= m_widgets[i]->updateTime(elapsedTime);
+            if (widget->isVisible())
+                screenRefreshRequired |= widget->updateTime(elapsedTime);
         }
 
-        m_animationTimeElapsed = {};
         return screenRefreshRequired;
     }
 
@@ -1248,7 +1274,7 @@ namespace tgui
 
     void Container::setParent(Container* parent)
     {
-        const GuiBase* oldParentGui = m_parentGui;
+        const BackendGui* oldParentGui = m_parentGui;
 
         Widget::setParent(parent);
 
@@ -1262,7 +1288,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Container::setParentGui(GuiBase* gui)
+    void Container::setParentGui(BackendGui* gui)
     {
         m_parentGui = gui;
 
@@ -1275,9 +1301,9 @@ namespace tgui
 
     Widget::Ptr Container::getWidgetBelowMouse(Vector2f mousePos) const
     {
-        for (auto it = m_widgets.rbegin(); it != m_widgets.rend(); ++it)
+        for (auto it = m_widgets.crbegin(); it != m_widgets.crend(); ++it)
         {
-            auto& widget = *it;
+            const auto& widget = *it;
             if (!widget->isVisible())
                 continue;
 
@@ -1308,7 +1334,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Container::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void Container::draw(BackendRenderTarget& target, RenderStates states) const
     {
         for (const auto& widget : m_widgets)
         {
@@ -1412,7 +1438,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void Container::widgetAdded(Widget::Ptr widgetPtr)
+    void Container::widgetAdded(const Widget::Ptr& widgetPtr)
     {
         if (widgetPtr->getParent())
         {
@@ -1428,8 +1454,8 @@ namespace tgui
         if (m_opacityCached < 1)
             widgetPtr->setInheritedOpacity(m_opacityCached);
 
-        if (m_textSize != 0)
-            widgetPtr->setTextSize(m_textSize);
+        if (m_textSizeCached != 0)
+            widgetPtr->setTextSize(m_textSizeCached);
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1438,33 +1464,10 @@ namespace tgui
     {
         for (const auto& pair : node->propertyValuePairs)
         {
-            if (((pair.first.size() >= 7) && (pair.first.substr(0, 7) == U"Texture")) || (pair.first == U"Font") || (pair.first == U"Image"))
+            if (((pair.first.size() >= 7) && (pair.first.substr(0, 7) == U"Texture")) || (pair.first == U"Font") || (pair.first == U"Image") || (pair.first == U"Icon"))
             {
-                if (pair.second->value.empty() || pair.second->value.equalIgnoreCase(U"none") || pair.second->value.equalIgnoreCase(U"null") || pair.second->value.equalIgnoreCase(U"nullptr"))
+                if (pair.second->value.empty() || viewEqualIgnoreCase(pair.second->value, U"none") || viewEqualIgnoreCase(pair.second->value, U"null") || viewEqualIgnoreCase(pair.second->value, U"nullptr"))
                     continue;
-
-                // Skip absolute paths
-                if (pair.second->value[0] != '"')
-                {
-                #ifdef TGUI_SYSTEM_WINDOWS
-                    if ((pair.second->value[0] == '/') || (pair.second->value[0] == '\\') || ((pair.second->value.size() > 1) && (pair.second->value[1] == ':')))
-                #else
-                    if (pair.second->value[0] == '/')
-                #endif
-                        continue;
-                }
-                else // The filename is between quotes
-                {
-                    if (pair.second->value.size() <= 1)
-                        continue;
-
-                #ifdef TGUI_SYSTEM_WINDOWS
-                    if ((pair.second->value[1] == '/') || (pair.second->value[1] == '\\') || ((pair.second->value.size() > 2) && (pair.second->value[2] == ':')))
-                #else
-                    if (pair.second->value[1] == '/')
-                #endif
-                        continue;
-                }
 
                 String filename;
                 if (pair.second->value[0] != '"')
@@ -1476,6 +1479,17 @@ namespace tgui
                     TGUI_ASSERT(endQuotePos != String::npos, "End quote must exist in Container::injectFormFilePath, DataIO could not accept the value otherwise");
                     filename = pair.second->value.substr(1, endQuotePos - 1);
                 }
+
+                // Skip absolute paths
+                if (filename[0] == '/')
+                    continue;
+#ifdef TGUI_SYSTEM_WINDOWS
+                if ((filename[0] == '\\') || ((filename.size() > 1) && (filename[1] == ':')))
+                    continue;
+#endif
+                // Skip embedded data
+                if (filename.starts_with(U"data:"))
+                    continue;
 
                 // If this image already appeared in the form file, then we already know whether it exists or not,
                 // and we would have already warned if it is located in the wrong folder.
@@ -1518,6 +1532,12 @@ namespace tgui
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#if TGUI_COMPILED_WITH_CPP_VER < 17
+    constexpr const char RootContainer::StaticWidgetType[];
+#endif
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     RootContainer::RootContainer(const char* typeName, bool initRenderer) :
         Container{typeName, initRenderer}
     {
@@ -1555,7 +1575,7 @@ namespace tgui
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    void RootContainer::draw(BackendRenderTargetBase& target, RenderStates states) const
+    void RootContainer::draw(BackendRenderTarget& target, RenderStates states) const
     {
         // The only reason to override this function was to change the access specifier, so just call the code from the base class
         Container::draw(target, states);

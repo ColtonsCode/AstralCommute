@@ -1,7 +1,7 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // TGUI - Texus' Graphical User Interface
-// Copyright (C) 2012-2022 Bruno Van de Velde (vdv_b@tgui.eu)
+// Copyright (C) 2012-2023 Bruno Van de Velde (vdv_b@tgui.eu)
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the use of this software.
@@ -23,9 +23,12 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Tests.hpp"
-#include <TGUI/String.hpp>
 
-// TODO: Tests using string views
+#if TGUI_COMPILED_WITH_CPP_VER >= 17
+    using namespace std::literals::string_view_literals;
+#else
+    using namespace tgui::literals::string_view_literals;
+#endif
 
 TEST_CASE("[String]")
 {
@@ -36,8 +39,26 @@ TEST_CASE("[String]")
     std::u16string u16s(u"\u03b1\u03b2\u03b3\u03b4\u03b5");
     std::u32string u32s(U"\u03b1\u03b2\u03b3\u03b4\u03b5");
 
+#if TGUI_COMPILED_WITH_CPP_VER >= 17
+    std::string_view view_s(s);
+    std::wstring_view view_ws(ws);
+    std::u16string_view view_u16s(u16s);
+    std::u32string_view view_u32s(u32s);
+#else
+    tgui::CharStringView view_s(s);
+    tgui::StringViewImpl<wchar_t> view_ws(ws);
+    tgui::StringViewImpl<char16_t> view_u16s(u16s);
+    tgui::StringView view_u32s(u32s);
+#endif
+
 #if defined(__cpp_lib_char8_t) && (__cpp_lib_char8_t >= 201811L)
     std::u8string u8s(u8"\u03b1\u03b2\u03b3\u03b4\u03b5");
+
+#if TGUI_COMPILED_WITH_CPP_VER >= 17
+    std::u8string_view view_u8s(u8s);
+#else
+    tgui::StringViewImpl<char8_t> view_u8s(u8s);
+#endif
 #endif
 
     SECTION("Constructor")
@@ -91,7 +112,22 @@ TEST_CASE("[String]")
         REQUIRE(tgui::String(u16s.begin(), u16s.end()) == u"\u03b1\u03b2\u03b3\u03b4\u03b5");
         REQUIRE(tgui::String(u32s.begin(), u32s.end()) == U"\u03b1\u03b2\u03b3\u03b4\u03b5");
 
-#if TGUI_HAS_BACKEND_SFML
+        REQUIRE(tgui::String("xyz"sv) == "xyz");
+        REQUIRE(tgui::String(L"\U00010348"sv) == L"\U00010348");
+        REQUIRE(tgui::String(u"\U00010348"sv) == u"\U00010348");
+        REQUIRE(tgui::String(U"\U00010348"sv) == U"\U00010348");
+
+        REQUIRE(tgui::String("abcde"sv, 1, 3) == "bcd");
+        REQUIRE(tgui::String(L"\u03b1\u03b2\u03b3\u03b4\u03b5"sv, 1, 3) == L"\u03b2\u03b3\u03b4");
+        REQUIRE(tgui::String(u"\u03b1\u03b2\u03b3\u03b4\u03b5"sv, 1, 3) == u"\u03b2\u03b3\u03b4");
+        REQUIRE(tgui::String(U"\u03b1\u03b2\u03b3\u03b4\u03b5"sv, 1, 3) == U"\u03b2\u03b3\u03b4");
+
+        REQUIRE(tgui::String(view_s) == U"abcde");
+        REQUIRE(tgui::String(view_ws) == U"\u03b1\u03b2\u03b3\u03b4\u03b5");
+        REQUIRE(tgui::String(view_u16s) == U"\u03b1\u03b2\u03b3\u03b4\u03b5");
+        REQUIRE(tgui::String(view_u32s) == U"\u03b1\u03b2\u03b3\u03b4\u03b5");
+
+#if TGUI_HAS_WINDOW_BACKEND_SFML
         REQUIRE(tgui::String(sf::String("xyz")) == "xyz");
 #endif
 
@@ -99,6 +135,11 @@ TEST_CASE("[String]")
         REQUIRE(tgui::String(std::u8string(u8"\U00010348")) == u8"\U00010348");
         REQUIRE(tgui::String(std::u8string(u8"\u03b1\u03b2\u03b3\u03b4\u03b5"), 6) == u8"\u03b4\u03b5");
         REQUIRE(tgui::String(std::u8string(u8"\u03b1\u03b2\u03b3\u03b4\u03b5"), 2, 6) == u8"\u03b2\u03b3\u03b4");
+
+        REQUIRE(tgui::String(u8"\U00010348"sv) == u8"\U00010348");
+        REQUIRE(tgui::String(u8"\u03b1\u03b2\u03b3\u03b4\u03b5"sv, 2, 6) == u8"\u03b2\u03b3\u03b4");
+
+        REQUIRE(tgui::String(view_u8s) == U"\u03b1\u03b2\u03b3\u03b4\u03b5");
 #endif
 
         REQUIRE(tgui::String(15) == "15");
@@ -108,17 +149,19 @@ TEST_CASE("[String]")
 
     SECTION("Conversions")
     {
-        REQUIRE(std::string(tgui::String("xyz")) == "xyz");
+        REQUIRE(std::string(tgui::String(U"xyz")) == "xyz");
         REQUIRE(std::wstring(tgui::String(U"\u20AC")) == L"\u20AC");
         REQUIRE(std::u16string(tgui::String(U"\U00010348")) == u"\U00010348");
         REQUIRE(std::u32string(tgui::String(U"\U00010348")) == U"\U00010348");
 
-        REQUIRE(tgui::String("xyz").toStdString() == "xyz");
+        REQUIRE(tgui::String(U"xyz").toStdString() == "xyz");
         REQUIRE(tgui::String(U"\u20AC").toWideString() == L"\u20AC");
         REQUIRE(tgui::String(U"\U00010348").toUtf16() == u"\U00010348");
         REQUIRE(tgui::String(U"\U00010348").toUtf32() == U"\U00010348");
 
-#if TGUI_HAS_BACKEND_SFML
+        REQUIRE(tgui::StringView(tgui::String(U"\U00010348")) == U"\U00010348"sv);
+
+#if TGUI_HAS_WINDOW_BACKEND_SFML
         REQUIRE(sf::String(tgui::String(U"test")) == sf::String("test"));
 #endif
 
@@ -145,16 +188,22 @@ TEST_CASE("[String]")
         REQUIRE(str.assign(std::wstring(L"\U00010348")) == L"\U00010348");
         REQUIRE(str.assign(std::u16string(u"\U00010348")) == u"\U00010348");
         REQUIRE(str.assign(std::u32string(U"\U00010348")) == U"\U00010348");
+        REQUIRE(str.assign(tgui::String(U"\U00010348")) == U"\U00010348");
+        REQUIRE(str.assign(U"\U00010348"sv) == U"\U00010348");
 
         REQUIRE(str.assign(std::string("abcde"), 3) == "de");
         REQUIRE(str.assign(std::wstring(L"\u03b1\u03b2\u03b3\u03b4\u03b5"), 3) == L"\u03b4\u03b5");
         REQUIRE(str.assign(std::u16string(u"\u03b1\u03b2\u03b3\u03b4\u03b5"), 3) == u"\u03b4\u03b5");
         REQUIRE(str.assign(std::u32string(U"\u03b1\u03b2\u03b3\u03b4\u03b5"), 3) == U"\u03b4\u03b5");
+        REQUIRE(str.assign(tgui::String(U"\u03b1\u03b2\u03b3\u03b4\u03b5"), 3) == U"\u03b4\u03b5");
+        REQUIRE(str.assign(U"\u03b1\u03b2\u03b3\u03b4\u03b5"sv, 3) == U"\u03b4\u03b5");
 
         REQUIRE(str.assign(std::string("abcde"), 1, 3) == "bcd");
         REQUIRE(str.assign(std::wstring(L"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == L"\u03b2\u03b3\u03b4");
         REQUIRE(str.assign(std::u16string(u"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == u"\u03b2\u03b3\u03b4");
         REQUIRE(str.assign(std::u32string(U"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == U"\u03b2\u03b3\u03b4");
+        REQUIRE(str.assign(tgui::String(U"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == U"\u03b2\u03b3\u03b4");
+        REQUIRE(str.assign(U"\u03b1\u03b2\u03b3\u03b4\u03b5"sv, 1, 3) == U"\u03b2\u03b3\u03b4");
 
         REQUIRE(str.assign('x') == 'x');
         REQUIRE(str.assign(L'\x20AC') == L'\x20AC');
@@ -175,6 +224,7 @@ TEST_CASE("[String]")
         REQUIRE(str.assign(ws.begin(), ws.end()) == L"\u03b1\u03b2\u03b3\u03b4\u03b5");
         REQUIRE(str.assign(u16s.begin(), u16s.end()) == u"\u03b1\u03b2\u03b3\u03b4\u03b5");
         REQUIRE(str.assign(u32s.begin(), u32s.end()) == U"\u03b1\u03b2\u03b3\u03b4\u03b5");
+        REQUIRE(str.assign(view_u32s.begin(), view_u32s.end()) == U"\u03b1\u03b2\u03b3\u03b4\u03b5");
 
         REQUIRE(str.assign(s) == "abcde");
         REQUIRE(str.assign(ws) == U"\u03b1\u03b2\u03b3\u03b4\u03b5");
@@ -241,10 +291,8 @@ TEST_CASE("[String]")
             REQUIRE(str1.data()[1] == U'b');
             REQUIRE(str2.data()[1] == U'\x03b2');
 
-#if __cplusplus >= 201703L
             str1.data()[1] = U'e';
             REQUIRE(str1.data()[1] == U'e');
-#endif
         }
 
         SECTION("c_str")
@@ -337,16 +385,22 @@ TEST_CASE("[String]")
         str = "^$"; REQUIRE(str.insert(1, std::wstring(L"\U00010348")) == L"^\U00010348$");
         str = "^$"; REQUIRE(str.insert(1, std::u16string(u"\U00010348")) == u"^\U00010348$");
         str = "^$"; REQUIRE(str.insert(1, std::u32string(U"\U00010348")) == U"^\U00010348$");
+        str = "^$"; REQUIRE(str.insert(1, tgui::String(U"\U00010348")) == U"^\U00010348$");
+        str = "^$"; REQUIRE(str.insert(1, U"\U00010348"sv) == U"^\U00010348$");
 
         str = "^$"; REQUIRE(str.insert(1, std::string("abcde"), 3) == "^de$");
         str = "^$"; REQUIRE(str.insert(1, std::wstring(L"\u03b1\u03b2\u03b3\u03b4\u03b5"), 3) == L"^\u03b4\u03b5$");
         str = "^$"; REQUIRE(str.insert(1, std::u16string(u"\u03b1\u03b2\u03b3\u03b4\u03b5"), 3) == u"^\u03b4\u03b5$");
         str = "^$"; REQUIRE(str.insert(1, std::u32string(U"\u03b1\u03b2\u03b3\u03b4\u03b5"), 3) == U"^\u03b4\u03b5$");
+        str = "^$"; REQUIRE(str.insert(1, tgui::String(U"\u03b1\u03b2\u03b3\u03b4\u03b5"), 3) == U"^\u03b4\u03b5$");
+        str = "^$"; REQUIRE(str.insert(1, U"\u03b1\u03b2\u03b3\u03b4\u03b5"sv, 3) == U"^\u03b4\u03b5$");
 
         str = "^$"; REQUIRE(str.insert(1, std::string("abcde"), 1, 3) == "^bcd$");
         str = "^$"; REQUIRE(str.insert(1, std::wstring(L"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == L"^\u03b2\u03b3\u03b4$");
         str = "^$"; REQUIRE(str.insert(1, std::u16string(u"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == u"^\u03b2\u03b3\u03b4$");
         str = "^$"; REQUIRE(str.insert(1, std::u32string(U"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == U"^\u03b2\u03b3\u03b4$");
+        str = "^$"; REQUIRE(str.insert(1, tgui::String(U"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == U"^\u03b2\u03b3\u03b4$");
+        str = "^$"; REQUIRE(str.insert(1, U"\u03b1\u03b2\u03b3\u03b4\u03b5"sv, 1, 3) == U"^\u03b2\u03b3\u03b4$");
 
         str = "^$"; REQUIRE(str.insert(1, 3, 'x') == "^xxx$");
         str = "^$"; REQUIRE(str.insert(1, 3, L'\x20AC') == L"^\u20AC\u20AC\u20AC$");
@@ -375,6 +429,7 @@ TEST_CASE("[String]")
         str = "^$"; str.insert(str.begin() + 1, ws.begin(), ws.end()); REQUIRE(str == L"^\u03b1\u03b2\u03b3\u03b4\u03b5$");
         str = "^$"; str.insert(str.begin() + 1, u16s.begin(), u16s.end()); REQUIRE(str == u"^\u03b1\u03b2\u03b3\u03b4\u03b5$");
         str = "^$"; str.insert(str.begin() + 1, u32s.begin(), u32s.end()); REQUIRE(str == U"^\u03b1\u03b2\u03b3\u03b4\u03b5$");
+        str = "^$"; str.insert(str.begin() + 1, view_u32s.begin(), view_u32s.end()); REQUIRE(str == U"^\u03b1\u03b2\u03b3\u03b4\u03b5$");
 
 #if defined(__cpp_lib_char8_t) && (__cpp_lib_char8_t >= 201811L)
         str = "^$"; REQUIRE(str.insert(1, u8"\U00010348") == u8"^\U00010348$");
@@ -436,16 +491,22 @@ TEST_CASE("[String]")
         str = "@"; REQUIRE(str.append(std::wstring(L"\U00010348")) == L"@\U00010348");
         str = "@"; REQUIRE(str.append(std::u16string(u"\U00010348")) == u"@\U00010348");
         str = "@"; REQUIRE(str.append(std::u32string(U"\U00010348")) == U"@\U00010348");
+        str = "@"; REQUIRE(str.append(tgui::String(U"\U00010348")) == U"@\U00010348");
+        str = "@"; REQUIRE(str.append(U"\U00010348"sv) == U"@\U00010348");
 
         str = "@"; REQUIRE(str.append(std::string("abcde"), 3) == "@de");
         str = "@"; REQUIRE(str.append(std::wstring(L"\u03b1\u03b2\u03b3\u03b4\u03b5"), 3) == L"@\u03b4\u03b5");
         str = "@"; REQUIRE(str.append(std::u16string(u"\u03b1\u03b2\u03b3\u03b4\u03b5"), 3) == u"@\u03b4\u03b5");
         str = "@"; REQUIRE(str.append(std::u32string(U"\u03b1\u03b2\u03b3\u03b4\u03b5"), 3) == U"@\u03b4\u03b5");
+        str = "@"; REQUIRE(str.append(tgui::String(U"\u03b1\u03b2\u03b3\u03b4\u03b5"), 3) == U"@\u03b4\u03b5");
+        str = "@"; REQUIRE(str.append(U"\u03b1\u03b2\u03b3\u03b4\u03b5"sv, 3) == U"@\u03b4\u03b5");
 
         str = "@"; REQUIRE(str.append(std::string("abcde"), 1, 3) == "@bcd");
         str = "@"; REQUIRE(str.append(std::wstring(L"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == L"@\u03b2\u03b3\u03b4");
         str = "@"; REQUIRE(str.append(std::u16string(u"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == u"@\u03b2\u03b3\u03b4");
         str = "@"; REQUIRE(str.append(std::u32string(U"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == U"@\u03b2\u03b3\u03b4");
+        str = "@"; REQUIRE(str.append(tgui::String(U"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == U"@\u03b2\u03b3\u03b4");
+        str = "@"; REQUIRE(str.append(U"\u03b1\u03b2\u03b3\u03b4\u03b5"sv, 1, 3) == U"@\u03b2\u03b3\u03b4");
 
         str = "@"; REQUIRE(str.append(3, 'x') == "@xxx");
         str = "@"; REQUIRE(str.append(3, L'\x20AC') == L"@\u20AC\u20AC\u20AC");
@@ -461,9 +522,7 @@ TEST_CASE("[String]")
         str = "@"; REQUIRE(str.append(ws.begin(), ws.end()) == L"@\u03b1\u03b2\u03b3\u03b4\u03b5");
         str = "@"; REQUIRE(str.append(u16s.begin(), u16s.end()) == u"@\u03b1\u03b2\u03b3\u03b4\u03b5");
         str = "@"; REQUIRE(str.append(u32s.begin(), u32s.end()) == U"@\u03b1\u03b2\u03b3\u03b4\u03b5");
-
-        str = "@"; REQUIRE(str.append(tgui::String("xyz")) == "@xyz");
-        str = "@"; REQUIRE(str.append(tgui::String("abcde"), 2, 2) == "@cd");
+        str = "@"; REQUIRE(str.append(view_u32s.begin(), view_u32s.end()) == U"@\u03b1\u03b2\u03b3\u03b4\u03b5");
 
 #if defined(__cpp_lib_char8_t) && (__cpp_lib_char8_t >= 201811L)
         str = "@"; REQUIRE(str.append(u8"\U00010348") == u8"@\U00010348");
@@ -488,19 +547,18 @@ TEST_CASE("[String]")
         str = "@"; REQUIRE((str += std::wstring(L"\U00010348")) == L"@\U00010348");
         str = "@"; REQUIRE((str += std::u16string(u"\U00010348")) == u"@\U00010348");
         str = "@"; REQUIRE((str += std::u32string(U"\U00010348")) == U"@\U00010348");
+        str = "@"; REQUIRE((str += tgui::String("xyz")) == "@xyz");
 
         str = "@"; REQUIRE((str += 'x') == "@x");
         str = "@"; REQUIRE((str += L'\x20AC') == L"@\u20AC");
         str = "@"; REQUIRE((str += u'\x20AC') == u"@\u20AC");
         str = "@"; REQUIRE((str += U'\x10348') == U"@\U00010348");
 
-        str = "@"; REQUIRE((str += tgui::String("xyz")) == "@xyz");
-
 #if defined(__cpp_lib_char8_t) && (__cpp_lib_char8_t >= 201811L)
         str = "@"; REQUIRE((str += u8"\U00010348") == u8"@\U00010348");
         str = "@"; REQUIRE((str += std::u8string(u8"\U00010348")) == u8"@\U00010348");
-        str = "@"; REQUIRE((str += u'\x13') == u"@\u0013");
-        str = "@"; REQUIRE((str += {u8'\x41', u8'\x42', u8'\x43'}) == u8"@\u0041\u0042\u0043");
+        str = "@"; REQUIRE((str += u8'\x13') == u8"@\u0013");
+        str = "@"; REQUIRE((str += tgui::String{u8'\x41', u8'\x42', u8'\x43'}) == u8"@\u0041\u0042\u0043");
 #endif
     }
 
@@ -527,20 +585,22 @@ TEST_CASE("[String]")
         REQUIRE(str.compare(std::wstring(L"\u03b1\u03b2\u03b3")) == 0);
         REQUIRE(str.compare(std::u16string(u"\u03b1\u03b2")) > 0);
         REQUIRE(str.compare(std::u32string(U"\u03b1\u03b2\u03b3\u03b4")) < 0);
+        REQUIRE(str.compare(tgui::String(U"\u03b1\u03b2\u03b3\u03b4")) < 0);
+        REQUIRE(str.compare(U"\u03b1\u03b2\u03b3\u03b4"sv) < 0);
 
         REQUIRE(str.compare(1, 2, std::string("yz")) > 0);
         REQUIRE(str.compare(1, 2, std::wstring(L"\u03b2\u03b3")) == 0);
         REQUIRE(str.compare(1, 2, std::u16string(u"\u03b2")) > 0);
         REQUIRE(str.compare(1, 2, std::u32string(U"\u03b2\u03b3\u03b4")) < 0);
+        REQUIRE(str.compare(1, 2, tgui::String(U"\u03b2\u03b3\u03b4")) < 0);
+        REQUIRE(str.compare(1, 2, U"\u03b2\u03b3\u03b4"sv) < 0);
 
         REQUIRE(str.compare(0, 2, std::string("yz"), 1, 2) > 0);
         REQUIRE(str.compare(0, 2, std::wstring(L"\u03b4\u03b1\u03b2\u03b3"), 1, 2) == 0);
         REQUIRE(str.compare(0, 2, std::u16string(u"\u03b4\u03b1\u03b2\u03b3"), 1, 1) > 0);
         REQUIRE(str.compare(0, 2, std::u32string(U"\u03b4\u03b1\u03b2\u03b3"), 1, 3) < 0);
-
-        REQUIRE(str.compare(tgui::String(U"\u03b1\u03b2\u03b3\u03b4")) < 0);
-        REQUIRE(str.compare(1, 2, tgui::String(U"\u03b2\u03b3\u03b4")) < 0);
         REQUIRE(str.compare(0, 2, tgui::String(U"\u03b4\u03b1\u03b2\u03b3"), 1, 3) < 0);
+        REQUIRE(str.compare(0, 2, U"\u03b4\u03b1\u03b2\u03b3"sv, 1, 3) < 0);
 
 #if defined(__cpp_lib_char8_t) && (__cpp_lib_char8_t >= 201811L)
         REQUIRE(str.compare(u8"\u03b1\u03b2\u03b3") == 0);
@@ -578,21 +638,28 @@ TEST_CASE("[String]")
         str = U"^a\u03b5$"; REQUIRE(str.replace(1, 2, std::wstring(L"\u03b1\u03b2\u03b3")) == U"^\u03b1\u03b2\u03b3$");
         str = U"^a\u03b5$"; REQUIRE(str.replace(1, 2, std::u16string(u"\u03b1\u03b2\u03b3")) == U"^\u03b1\u03b2\u03b3$");
         str = U"^a\u03b5$"; REQUIRE(str.replace(1, 2, std::u32string(U"\u03b1\u03b2\u03b3")) == U"^\u03b1\u03b2\u03b3$");
+        str = U"^a\u03b5$"; REQUIRE(str.replace(1, 2, tgui::String(U"\u03b1\u03b2\u03b3")) == U"^\u03b1\u03b2\u03b3$");
+        str = U"^a\u03b5$"; REQUIRE(str.replace(1, 2, U"\u03b1\u03b2\u03b3"sv) == U"^\u03b1\u03b2\u03b3$");
 
         str = U"^a\u03b5$"; REQUIRE(str.replace(1, 2, std::string("abcde"), 1, 3) == U"^bcd$");
         str = U"^a\u03b5$"; REQUIRE(str.replace(1, 2, std::wstring(L"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == U"^\u03b2\u03b3\u03b4$");
         str = U"^a\u03b5$"; REQUIRE(str.replace(1, 2, std::u16string(u"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == U"^\u03b2\u03b3\u03b4$");
         str = U"^a\u03b5$"; REQUIRE(str.replace(1, 2, std::u32string(U"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == U"^\u03b2\u03b3\u03b4$");
+        str = U"^a\u03b5$"; REQUIRE(str.replace(1, 2, tgui::String(U"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == U"^\u03b2\u03b3\u03b4$");
+        str = U"^a\u03b5$"; REQUIRE(str.replace(1, 2, U"\u03b1\u03b2\u03b3\u03b4\u03b5"sv, 1, 3) == U"^\u03b2\u03b3\u03b4$");
 
         str = U"^a\u03b5$"; REQUIRE(str.replace(str.begin() + 1, str.begin() + 3, std::string("abc")) == U"^abc$");
         str = U"^a\u03b5$"; REQUIRE(str.replace(str.begin() + 1, str.begin() + 3, std::wstring(L"\u03b1\u03b2\u03b3")) == U"^\u03b1\u03b2\u03b3$");
         str = U"^a\u03b5$"; REQUIRE(str.replace(str.begin() + 1, str.begin() + 3, std::u16string(u"\u03b1\u03b2\u03b3")) == U"^\u03b1\u03b2\u03b3$");
         str = U"^a\u03b5$"; REQUIRE(str.replace(str.begin() + 1, str.begin() + 3, std::u32string(U"\u03b1\u03b2\u03b3")) == U"^\u03b1\u03b2\u03b3$");
+        str = U"^a\u03b5$"; REQUIRE(str.replace(str.begin() + 1, str.begin() + 3, tgui::String(U"\u03b1\u03b2\u03b3")) == U"^\u03b1\u03b2\u03b3$");
+        str = U"^a\u03b5$"; REQUIRE(str.replace(str.begin() + 1, str.begin() + 3, U"\u03b1\u03b2\u03b3"sv) == U"^\u03b1\u03b2\u03b3$");
 
         str = U"^a\u03b5$"; REQUIRE(str.replace(str.begin() + 1, str.begin() + 3, s.begin() + 1, s.begin() + 4) == U"^bcd$");
         str = U"^a\u03b5$"; REQUIRE(str.replace(str.begin() + 1, str.begin() + 3, ws.begin() + 1, ws.begin() + 4) == U"^\u03b2\u03b3\u03b4$");
         str = U"^a\u03b5$"; REQUIRE(str.replace(str.begin() + 1, str.begin() + 3, u16s.begin() + 1, u16s.begin() + 4) == U"^\u03b2\u03b3\u03b4$");
         str = U"^a\u03b5$"; REQUIRE(str.replace(str.begin() + 1, str.begin() + 3, u32s.begin() + 1, u32s.begin() + 4) == U"^\u03b2\u03b3\u03b4$");
+        str = U"^a\u03b5$"; REQUIRE(str.replace(str.begin() + 1, str.begin() + 3, view_u32s.begin() + 1, view_u32s.begin() + 4) == U"^\u03b2\u03b3\u03b4$");
 
         str = U"^a\u03b5$"; REQUIRE(str.replace(1, 2, 3, 'b') == U"^bbb$");
         str = U"^a\u03b5$"; REQUIRE(str.replace(1, 2, 3, L'\x03b2') == U"^\u03b2\u03b2\u03b2$");
@@ -609,11 +676,8 @@ TEST_CASE("[String]")
         str = U"^a\u03b5$"; REQUIRE(str.replace(str.begin() + 1, str.begin() + 3, {u'\x03b1', u'\x03b2', u'\x03b3'}) == U"^\u03b1\u03b2\u03b3$");
         str = U"^a\u03b5$"; REQUIRE(str.replace(str.begin() + 1, str.begin() + 3, {U'\x03b1', U'\x03b2', U'\x03b3'}) == U"^\u03b1\u03b2\u03b3$");
 
-        str = U"^a\u03b5$"; REQUIRE(str.replace(1, 2, tgui::String(U"\u03b1\u03b2\u03b3")) == U"^\u03b1\u03b2\u03b3$");
-        str = U"^a\u03b5$"; REQUIRE(str.replace(str.begin() + 1, str.begin() + 3, tgui::String(U"\u03b1\u03b2\u03b3")) == U"^\u03b1\u03b2\u03b3$");
-        str = U"^a\u03b5$"; REQUIRE(str.replace(1, 2, tgui::String(U"\u03b1\u03b2\u03b3\u03b4\u03b5"), 1, 3) == U"^\u03b2\u03b3\u03b4$");
-
         str = "^ab:abc:abc:bc$"; REQUIRE(str.replace("abc", "xyz") == "^ab:xyz:xyz:bc$");
+        str = "123"; REQUIRE(str.replace("", "xyz") == "xyz1xyz2xyz3xyz");
 
 #if defined(__cpp_lib_char8_t) && (__cpp_lib_char8_t >= 201811L)
         str = U"^a\u03b5$"; REQUIRE(str.replace(1, 2, u8"\u03b1\u03b2\u03b3") == U"^\u03b1\u03b2\u03b3$");
@@ -626,13 +690,27 @@ TEST_CASE("[String]")
 #endif
     }
 
+    SECTION("remove")
+    {
+        str = "^ab:abc:abc:bc$";
+        str.remove("abc");
+        REQUIRE(str == "^ab:::bc$");
+
+        str.remove("0123456789");
+        REQUIRE(str == "^ab:::bc$");
+
+        // Removing an empty string does nothing
+        str.remove("");
+        REQUIRE(str == "^ab:::bc$");
+    }
+
     SECTION("copy")
     {
         char32_t chars[4];
         chars[3] = U'$';
         str = U"\u03b1\u03b2\u03b3\u03b4\u03b5";
-        REQUIRE(str.copy(chars, 3, 1) == 3);
-        REQUIRE(std::u32string(chars, 4) == U"\u03b2\u03b3\u03b4$");
+        REQUIRE(str.copy(static_cast<char32_t*>(chars), 3, 1) == 3);
+        REQUIRE(std::u32string(static_cast<const char32_t*>(chars), 4) == U"\u03b2\u03b3\u03b4$");
     }
 
     SECTION("resize")
@@ -661,6 +739,9 @@ TEST_CASE("[String]")
         REQUIRE(str.contains(L"c\u03b4"));
         REQUIRE(str.contains(u"c\u03b4"));
         REQUIRE(str.contains(U"c\u03b4"));
+        REQUIRE(str.contains(std::u32string(U"c\u03b4")));
+        REQUIRE(str.contains(tgui::String(U"c\u03b4")));
+        REQUIRE(str.contains(U"c\u03b4"sv));
 
         REQUIRE(str.contains('c'));
         REQUIRE(str.contains(L'\x03b4'));
@@ -697,6 +778,7 @@ TEST_CASE("[String]")
         REQUIRE(str.find(std::u16string(u"c\u03b4")) == 2);
         REQUIRE(str.find(std::u32string(U"c\u03b4")) == 2);
         REQUIRE(str.find(tgui::String(U"c\u03b4")) == 2);
+        REQUIRE(str.find(U"c\u03b4"sv) == 2);
 
         REQUIRE(str.find('c') == 2);
         REQUIRE(str.find(L'\x03b4') == 3);
@@ -718,6 +800,7 @@ TEST_CASE("[String]")
         REQUIRE(str.find_first_of(std::u16string(u"c\u03b4")) == 2);
         REQUIRE(str.find_first_of(std::u32string(U"c\u03b4")) == 2);
         REQUIRE(str.find_first_of(tgui::String(U"c\u03b4")) == 2);
+        REQUIRE(str.find_first_of(U"c\u03b4"sv) == 2);
 
         REQUIRE(str.find_first_of('c') == 2);
         REQUIRE(str.find_first_of(L'\x03b4') == 3);
@@ -739,6 +822,7 @@ TEST_CASE("[String]")
         REQUIRE(str.find_first_not_of(std::u16string(u"c\u03b4")) == 0);
         REQUIRE(str.find_first_not_of(std::u32string(U"c\u03b4")) == 0);
         REQUIRE(str.find_first_not_of(tgui::String(U"c\u03b4")) == 0);
+        REQUIRE(str.find_first_not_of(U"c\u03b4"sv) == 0);
 
         REQUIRE(str.find_first_not_of('c') == 0);
         REQUIRE(str.find_first_not_of(L'\x03b4') == 0);
@@ -760,6 +844,7 @@ TEST_CASE("[String]")
         REQUIRE(str.find_last_of(std::u16string(u"c\u03b4")) == 3);
         REQUIRE(str.find_last_of(std::u32string(U"c\u03b4")) == 3);
         REQUIRE(str.find_last_of(tgui::String(U"c\u03b4")) == 3);
+        REQUIRE(str.find_last_of(U"c\u03b4"sv) == 3);
 
         REQUIRE(str.find_last_of('c') == 2);
         REQUIRE(str.find_last_of(L'\x03b4') == 3);
@@ -781,6 +866,7 @@ TEST_CASE("[String]")
         REQUIRE(str.find_last_not_of(std::u16string(u"c\u03b4")) == 6);
         REQUIRE(str.find_last_not_of(std::u32string(U"c\u03b4")) == 6);
         REQUIRE(str.find_last_not_of(tgui::String(U"c\u03b4")) == 6);
+        REQUIRE(str.find_last_not_of(U"c\u03b4"sv) == 6);
 
         REQUIRE(str.find_last_not_of('c') == 6);
         REQUIRE(str.find_last_not_of(L'\x03b4') == 6);
@@ -802,6 +888,7 @@ TEST_CASE("[String]")
         REQUIRE(str.rfind(std::u16string(u"c\u03b4")) == 2);
         REQUIRE(str.rfind(std::u32string(U"c\u03b4")) == 2);
         REQUIRE(str.rfind(tgui::String(U"c\u03b4")) == 2);
+        REQUIRE(str.rfind(U"c\u03b4"sv) == 2);
 
         REQUIRE(str.rfind('c') == 2);
         REQUIRE(str.rfind(L'\x03b4') == 3);
@@ -1262,27 +1349,8 @@ TEST_CASE("[String]")
 
         std::wstringbuf wstreambuf;
         std::wostream wostream(&wstreambuf);
-        wostream << tgui::String(L"\u03b1\u03b2\u03b3");
-        REQUIRE(wstreambuf.str() == L"\u03b1\u03b2\u03b3");
-
-        // The other << operators don't work with libc++
-
-        //std::basic_stringbuf<char16_t> u16streambuf;
-        //std::basic_ostream<char16_t> u16ostream(&u16streambuf);
-        //u16ostream << tgui::String(u"\u03b1\u03b2\u03b3");
-        //REQUIRE(u16streambuf.str() == u"\u03b1\u03b2\u03b3");
-
-        //std::basic_stringbuf<char32_t> u32streambuf;
-        //std::basic_ostream<char32_t> u32ostream(&u32streambuf);
-        //u32ostream << tgui::String(U"\u03b1\u03b2\u03b3";
-        //REQUIRE(u32streambuf.str() == U"\u03b1\u03b2\u03b3");
-
-#if defined(__cpp_lib_char8_t) && (__cpp_lib_char8_t >= 201811L)
-        //std::basic_stringbuf<char8_t> u8streambuf;
-        //std::basic_ostream<char8_t> u8ostream(&u8streambuf);
-        //u8ostream << tgui::String(u8"\u03b1\u03b2\u03b3");
-        //REQUIRE(u8streambuf.str() == u8"\u03b1\u03b2\u03b3");
-#endif
+        wostream << (tgui::String(L"\u03b1\u03b2\u03b3") + tgui::String(U"\u03b4\u03b5"));
+        REQUIRE(wstreambuf.str() == L"\u03b1\u03b2\u03b3\u03b4\u03b5");
     }
 
     SECTION("attemptToInt")
@@ -1387,10 +1455,25 @@ TEST_CASE("[String]")
         REQUIRE(str.toUpper() == "ABCDEFGHIJ \u20AC");
     }
 
+    SECTION("equalIgnoreCase")
+    {
+        str = "aBc";
+        REQUIRE(str.equalIgnoreCase("aBc"));
+        REQUIRE(str.equalIgnoreCase("Abc"));
+
+        REQUIRE(!str.equalIgnoreCase(""));
+        REQUIRE(!str.equalIgnoreCase("xyz"));
+        REQUIRE(!str.equalIgnoreCase("abcde"));
+        REQUIRE(!str.equalIgnoreCase(U"\u03b1\u03b2\u03b3"));
+
+        REQUIRE(tgui::viewEqualIgnoreCase("aBc", "Abc"));
+        REQUIRE(tgui::viewEqualIgnoreCase(U"aBc", U"Abc"));
+    }
+
     SECTION("split")
     {
         const tgui::String listStr("alpha, bravo, charlie");
-        std::vector<tgui::String> parts = listStr.split(',');
+        std::vector<tgui::String> parts = listStr.split(U',');
         REQUIRE(parts.size() == 3);
         REQUIRE(parts[0] == "alpha");
         REQUIRE(parts[1] == " bravo");
@@ -1414,6 +1497,17 @@ TEST_CASE("[String]")
         REQUIRE(parts.size() == 2);
         REQUIRE(parts[0] == "a");
         REQUIRE(parts[1] == "b");
+
+        parts = tgui::String("a<br>b").split("<br>");
+        REQUIRE(parts.size() == 2);
+        REQUIRE(parts[0] == "a");
+        REQUIRE(parts[1] == "b");
+
+        parts = tgui::String("abc").split("");
+        REQUIRE(parts.size() == 3);
+        REQUIRE(parts[0] == "a");
+        REQUIRE(parts[1] == "b");
+        REQUIRE(parts[2] == "c");
     }
 
     SECTION("join")
@@ -1424,26 +1518,34 @@ TEST_CASE("[String]")
         REQUIRE(tgui::String::join({}, ", ") == "");
     }
 
-    SECTION("startsWith")
+    SECTION("starts_with")
     {
-        REQUIRE(tgui::String(U"abc\u20ACxyz").startsWith("ab"));
-        REQUIRE(tgui::String(U"abc\u20ACxyz").startsWith(U"abc\u20ACxyz"));
-        REQUIRE(tgui::String(U"abc\u20ACxyz").startsWith(""));
-        REQUIRE(!tgui::String(U"abc\u20ACxyz").startsWith(U"abc\u20ACxyz123"));
-        REQUIRE(!tgui::String(U"abc\u20ACxyz").startsWith(U"123abc\u20ACxyz"));
-        REQUIRE(!tgui::String(U"abc\u20ACxyz").startsWith("xyz"));
-        REQUIRE(!tgui::String(U"abc\u20ACxyz").startsWith("o"));
+        REQUIRE(tgui::String(U"abc\u20ACxyz").starts_with(tgui::String{"abc"}));
+        REQUIRE(tgui::String(U"abc\u20ACxyz").starts_with("ab"));
+        REQUIRE(tgui::String(U"abc\u20ACxyz").starts_with(U"abc\u20ACxyz"));
+        REQUIRE(tgui::String(U"abc\u20ACxyz").starts_with(""));
+        REQUIRE(!tgui::String(U"abc\u20ACxyz").starts_with(U"abc\u20ACxyz123"));
+        REQUIRE(!tgui::String(U"abc\u20ACxyz").starts_with(U"123abc\u20ACxyz"));
+        REQUIRE(!tgui::String(U"abc\u20ACxyz").starts_with("xyz"));
+        REQUIRE(!tgui::String(U"abc\u20ACxyz").starts_with("o"));
+
+        REQUIRE(tgui::viewStartsWith("abcxyz", "abc"));
+        REQUIRE(tgui::viewStartsWith(U"abc\u20ACxyz", U"abc"));
     }
 
-    SECTION("endsWith")
+    SECTION("ends_with")
     {
-        REQUIRE(tgui::String(U"abc\u20ACxyz").endsWith("yz"));
-        REQUIRE(tgui::String(U"abc\u20ACxyz").endsWith(U"abc\u20ACxyz"));
-        REQUIRE(tgui::String(U"abc\u20ACxyz").endsWith(""));
-        REQUIRE(!tgui::String(U"abc\u20ACxyz").endsWith(U"abc\u20ACxyz123"));
-        REQUIRE(!tgui::String(U"abc\u20ACxyz").endsWith(U"123abc\u20ACxyz"));
-        REQUIRE(!tgui::String(U"abc\u20ACxyz").endsWith("abc"));
-        REQUIRE(!tgui::String(U"abc\u20ACxyz").endsWith("o"));
+        REQUIRE(tgui::String(U"abc\u20ACxyz").ends_with(tgui::String{"xyz"}));
+        REQUIRE(tgui::String(U"abc\u20ACxyz").ends_with("yz"));
+        REQUIRE(tgui::String(U"abc\u20ACxyz").ends_with(U"abc\u20ACxyz"));
+        REQUIRE(tgui::String(U"abc\u20ACxyz").ends_with(""));
+        REQUIRE(!tgui::String(U"abc\u20ACxyz").ends_with(U"abc\u20ACxyz123"));
+        REQUIRE(!tgui::String(U"abc\u20ACxyz").ends_with(U"123abc\u20ACxyz"));
+        REQUIRE(!tgui::String(U"abc\u20ACxyz").ends_with("abc"));
+        REQUIRE(!tgui::String(U"abc\u20ACxyz").ends_with("o"));
+
+        REQUIRE(tgui::viewEndsWith("abcxyz", "xyz"));
+        REQUIRE(tgui::viewEndsWith(U"abc\u20ACxyz", U"xyz"));
     }
 
     SECTION("isWhitespace")
